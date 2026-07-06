@@ -487,29 +487,6 @@
 
 <main>
 
-  <div class="callout-box">
-    <h3>System Warnings &amp; Operational Constraints</h3>
-    <div class="callout-grid">
-      <div class="callout-section">
-        <h4>What Not To Do</h4>
-        <ul>
-          <li>Do not expose your Gemini API credentials to frontend tracking blocks, analytical aggregators, or third-party storage nodes.</li>
-          <li>Do not refresh or close the session runtime while an active generation pipeline processing sequence is underway.</li>
-          <li>Do not attempt to pass multi-gigabyte text buffers or raw binary assets into the prompt vector arrays.</li>
-          <li>Do not execute local script mutations that bypass the systemic validation checks of the JSON deserializer.</li>
-        </ul>
-      </div>
-      <div class="callout-section">
-        <h4>Usage Precautions</h4>
-        <ul>
-          <li>All generation pipelines pull inference processing units directly from your configured account keys. Monitor your Google AI Studio resource allocations.</li>
-          <li>Local browser context caching utilizes explicit storage references. Clear browser application state manually to hard-reset token maps.</li>
-          <li>The 3D layout matrix serves as a relative structural visualization tool, not a certified structural engineering CAD blueprint.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-
   <section class="sheet">
     <div class="sheet-head">
       <span class="sheet-num">01</span>
@@ -604,10 +581,6 @@
         <div id="part-hint">Drag to orbit, scroll to zoom. This is a rough parametric layout from the AI's stated dimensions — not a precision CAD model.</div>
       </div>
       <div class="tabpanel" id="panel-notes"></div>
-
-      <div class="actions">
-        <button class="btn secondary" id="exportBtn">Export as Markdown</button>
-      </div>
     </div>
   </section>
 
@@ -632,8 +605,8 @@
 </main>
 
 <footer>
-  <span>MAKESPEC By Eddie Singh</span>
-  <span>©Eddie Singh</span>
+  <span>MAKESPEC — runs entirely in your browser, no backend.</span>
+  <span>Your API key never leaves your device except to call generativelanguage.googleapis.com directly.</span>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -645,7 +618,7 @@ const ACCOUNT_STORAGE_KEY = 'makespec_profiles';
 const ACTIVE_PROFILE_KEY = 'makespec_active_id';
 
 let profiles = {
-  'default': { name: 'Profile A', key: '' }
+  'default': { name: 'Profile Alpha', key: '' }
 };
 let activeProfileId = 'default';
 
@@ -653,12 +626,7 @@ function loadProfiles() {
   const saved = localStorage.getItem(ACCOUNT_STORAGE_KEY);
   const activeId = localStorage.getItem(ACTIVE_PROFILE_KEY);
   if (saved) {
-    try { 
-      const parsed = JSON.parse(saved); 
-      if (parsed && Object.keys(parsed).length > 0) {
-        profiles = parsed;
-      }
-    } catch(e) {}
+    try { profiles = JSON.parse(saved); } catch(e) {}
   }
   if (activeId && profiles[activeId]) {
     activeProfileId = activeId;
@@ -744,7 +712,6 @@ const els = {
   reviseBtn: document.getElementById('reviseBtn'),
   reviseStatus: document.getElementById('reviseStatus'),
   revHistory: document.getElementById('revHistory'),
-  exportBtn: document.getElementById('exportBtn'),
   stampDate: document.getElementById('stamp-date'),
   stampRev: document.getElementById('stamp-rev'),
   stampStatus: document.getElementById('stamp-status'),
@@ -752,14 +719,6 @@ const els = {
 
 loadProfiles();
 renderAccountGrid();
-
-// Real-time listener to prevent keystroke loss on manual entry
-els.apikey.addEventListener('input', () => {
-  if (profiles[activeProfileId]) {
-    profiles[activeProfileId].key = els.apikey.value.trim();
-    saveProfiles();
-  }
-});
 
 els.stampDate.textContent = new Date().toLocaleDateString();
 
@@ -879,10 +838,8 @@ function escapeHtml(str){
 function renderSpec(spec){
   state.currentSpec = spec;
   els.emptyState.style.display = 'none';
-  
-  // Make containers immediately visible to ensure layout sizes are obtainable
-  els.outputSheet.style.display = 'block';
-  els.reviseSheet.style.display = 'block';
+  els.outputSheet.style.display = '';
+  els.reviseSheet.style.display = '';
 
   document.getElementById('output-title').textContent = spec.project_title || 'Generated Spec';
 
@@ -962,19 +919,13 @@ let renderer, scene, camera, animFrame, partMeshes = [];
 function initThree(){
   const wrap = document.getElementById('canvas-wrap');
   wrap.innerHTML = '';
-  
   renderer = new THREE.WebGLRenderer({ antialias: true });
-  
-  // Guard against hidden tab bounds computation anomalies
-  const width = wrap.clientWidth || 600;
-  const height = wrap.clientHeight || 460;
-  
-  renderer.setSize(width, height);
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   wrap.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
+  camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 5000);
   camera.position.set(300, 260, 420);
   camera.lookAt(0,0,0);
 
@@ -1156,45 +1107,6 @@ els.reviseBtn.addEventListener('click', async () => {
   } finally {
     setBusy(els.reviseBtn, els.reviseStatus, false, '');
   }
-});
-
-els.exportBtn.addEventListener('click', () => {
-  if (!state.currentSpec) return;
-  const s = state.currentSpec;
-  const md = [];
-  md.push(`# ${s.project_title || 'Project Spec'}`);
-  md.push(`\n## Summary\n${s.summary || ''}`);
-  if (s.assumptions) md.push(`\n**Assumptions:** ${s.assumptions}`);
-
-  md.push('\n## Parts List');
-  md.push('| Part | Qty | Status | Notes |');
-  md.push('| --- | --- | --- | --- |');
-  (s.parts || []).forEach(p => md.push(`| ${p.name} | ${p.qty} | ${p.status} | ${p.notes} |`));
-
-  md.push('\n## Equipment & Tools');
-  md.push('| Tool | Purpose |');
-  md.push('| --- | --- |');
-  (s.equipment || []).forEach(e => md.push(`| ${e.name} | ${e.purpose} |`));
-
-  md.push('\n## Materials');
-  md.push('| Material | Qty | Notes |');
-  md.push('| --- | --- | --- |');
-  (s.materials || []).forEach(m => md.push(`| ${m.name} | ${m.qty} | ${m.notes} |`));
-
-  md.push('\n## Procedure');
-  (s.procedure || []).forEach(p => md.push(`${p.step_number}. **${p.title}** (${p.est_time || 'N/A'})\n   ${p.description}`));
-
-  md.push('\n## Safety Notes');
-  (s.safety_notes || []).forEach(n => md.push(`- ${n}`));
-
-  md.push('\n## Open Questions');
-  (s.open_questions || []).forEach(q => md.push(`- ${q}`));
-
-  const blob = new Blob([md.join('\n')], { type: 'text/markdown' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${(s.project_title || 'spec').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_spec.md`;
-  a.click();
 });
 </script>
 </body>
