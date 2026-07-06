@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAKESPEC — Project Spec Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E9EDF1;
+    --paper-deep:#DDE4EA;
+    --grid-line:#C6D1DB;
+    --ink:#16232E;
+    --ink-soft:#4B5C6B;
+    --ink-faint:#7C8B99;
+    --copper:#BD6B27;
+    --copper-dark:#8C4E1B;
+    --pine:#3D6A58;
+    --danger:#A93A3A;
+    --white:#F6F8FA;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+    --radius: 2px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    min-height:100vh;
+    padding: 0 0 80px 0;
+  }
+  a{color:var(--copper-dark);}
+  ::selection{ background: var(--copper); color: var(--white); }
+
+  /* ===== Title block header, styled like an engineering drawing stamp ===== */
+  .titleblock{
+    border-bottom: 2px solid var(--ink);
+    background: var(--white);
+    padding: 18px 28px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap: 16px;
+  }
+  .titleblock .brand{
+    font-family: var(--mono);
+    font-weight:700;
+    font-size: 1.5rem;
+    letter-spacing: 0.02em;
+  }
+  .titleblock .brand span{ color: var(--copper); }
+  .titleblock .tagline{
+    font-family: var(--sans);
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    margin-top: 2px;
+  }
+  .stampgrid{
+    display:grid;
+    grid-template-columns: repeat(4, auto);
+    border: 1px solid var(--ink);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+  }
+  .stampgrid div{
+    padding: 5px 10px;
+    border-left: 1px solid var(--ink);
+  }
+  .stampgrid div:first-child{ border-left:none; }
+  .stampgrid .label{ color: var(--ink-faint); display:block; font-size:0.62rem; text-transform:uppercase; letter-spacing:0.06em;}
+  .stampgrid .value{ font-weight:600; }
+
+  main{
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 32px 24px 0;
+  }
+
+  /* ===== Section headers numbered like drawing sheets ===== */
+  .sheet{
+    background: var(--white);
+    border: 1px solid var(--ink);
+    box-shadow: 4px 4px 0 rgba(22,35,46,0.08);
+    margin-bottom: 32px;
+  }
+  .sheet-head{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--ink);
+    background: repeating-linear-gradient(135deg, rgba(189,107,39,0.06) 0 6px, transparent 6px 12px);
+  }
+  .sheet-num{
+    font-family: var(--mono);
+    font-weight:700;
+    color: var(--copper);
+    border: 1.5px solid var(--copper);
+    padding: 2px 8px;
+    font-size: 0.85rem;
+  }
+  .sheet-head h2{
+    font-family: var(--mono);
+    font-size: 1rem;
+    margin:0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .sheet-body{ padding: 22px 24px 26px; }
+
+  label{
+    display:block;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+    margin-top: 18px;
+  }
+  label:first-child{ margin-top:0; }
+  input[type="text"], textarea, select, input[type="password"]{
+    width:100%;
+    font-family: var(--sans);
+    font-size: 0.92rem;
+    padding: 10px 12px;
+    border: 1px solid var(--ink-faint);
+    background: var(--paper);
+    color: var(--ink);
+    border-radius: var(--radius);
+    resize: vertical;
+  }
+  input:focus, textarea:focus, select:focus{
+    outline: 2px solid var(--copper);
+    outline-offset: 1px;
+    background: var(--white);
+  }
+  textarea{ min-height: 84px; }
+  .row2{ display:grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 640px){ .row2{ grid-template-columns: 1fr; } }
+
+  .btn{
+    font-family: var(--mono);
+    font-weight:600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 12px 22px;
+    border: 1.5px solid var(--ink);
+    background: var(--copper);
+    color: var(--white);
+    cursor:pointer;
+    border-radius: var(--radius);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  .btn:hover{ box-shadow: 3px 3px 0 var(--ink); transform: translate(-1px,-1px); }
+  .btn:active{ box-shadow:none; transform:none; }
+  .btn:disabled{ background: var(--ink-faint); border-color:var(--ink-faint); cursor:not-allowed; box-shadow:none; transform:none;}
+  .btn.secondary{ background: var(--white); color: var(--ink); }
+  .btn.danger{ background: var(--white); color: var(--danger); border-color: var(--danger); }
+
+  details.keybox{ margin-top:18px; }
+  details.keybox summary{
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+    cursor:pointer;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+  }
+  details.keybox .keybody{
+    margin-top:12px;
+    padding: 14px;
+    background: var(--paper-deep);
+    border: 1px dashed var(--ink-faint);
+    font-size: 0.85rem;
+  }
+  .keybody p{ margin: 0 0 10px; color: var(--ink-soft); }
+
+  .actions{ display:flex; gap:12px; align-items:center; margin-top: 22px; flex-wrap:wrap; }
+  .status{ font-family: var(--mono); font-size: 0.78rem; color: var(--ink-soft); }
+  .status.err{ color: var(--danger); }
+  .status.ok{ color: var(--pine); }
+
+  /* Loading spinner - drafting compass style */
+  .spinner{
+    width:16px; height:16px;
+    border: 2px solid var(--ink-faint);
+    border-top-color: var(--copper);
+    border-radius:50%;
+    display:inline-block;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right:8px;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  /* ===== Output tabs ===== */
+  .tabs{ display:flex; flex-wrap:wrap; gap:2px; border-bottom: 1px solid var(--ink); }
+  .tab{
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    padding: 10px 16px;
+    background: var(--paper-deep);
+    border: 1px solid var(--ink);
+    border-bottom: none;
+    cursor:pointer;
+    color: var(--ink-soft);
+    position:relative;
+    top:1px;
+  }
+  .tab.active{ background: var(--white); color: var(--ink); font-weight:600; }
+  .tabpanel{ display:none; padding-top: 20px; }
+  .tabpanel.active{ display:block; }
+
+  table{ width:100%; border-collapse: collapse; font-size: 0.88rem; }
+  th, td{ text-align:left; padding: 8px 10px; border-bottom: 1px solid var(--grid-line); vertical-align:top; }
+  th{ font-family: var(--mono); font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em; color: var(--ink-faint); border-bottom: 1px solid var(--ink); }
+  tr:hover td{ background: rgba(189,107,39,0.05); }
+  .tag{
+    display:inline-block;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: var(--radius);
+    border: 1px solid currentColor;
+  }
+  .tag.have{ color: var(--pine); }
+  .tag.need{ color: var(--copper-dark); }
+
+  .procedure-step{ display:flex; gap:14px; padding: 14px 0; border-bottom: 1px dashed var(--grid-line); }
+  .procedure-step:last-child{ border-bottom:none; }
+  .step-num{
+    font-family: var(--mono); font-weight:700; color: var(--white);
+    background: var(--ink); min-width:30px; height:30px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; font-size:0.85rem;
+  }
+  .step-title{ font-weight:600; margin-bottom:4px; }
+  .step-time{ font-family: var(--mono); font-size:0.7rem; color: var(--ink-faint); margin-left:8px; }
+  .step-desc{ color: var(--ink-soft); font-size: 0.9rem; }
+
+  .notice-list{ list-style:none; padding:0; margin:0; }
+  .notice-list li{
+    padding: 10px 12px;
+    border-left: 3px solid var(--danger);
+    background: rgba(169,58,58,0.06);
+    margin-bottom: 8px;
+    font-size: 0.88rem;
+  }
+  .notice-list.questions li{ border-left-color: var(--copper); background: rgba(189,107,39,0.06); }
+
+  #canvas-wrap{
+    width:100%; height: 420px;
+    border: 1px solid var(--ink);
+    background: #0F1B24;
+    position:relative;
+    overflow:hidden;
+  }
+  #part-legend{
+    display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;
+  }
+  .legend-chip{
+    display:flex; align-items:center; gap:6px;
+    font-family: var(--mono); font-size:0.72rem;
+    padding: 4px 8px; border:1px solid var(--grid-line);
+    cursor:pointer;
+  }
+  .legend-chip.dim{ opacity:0.4; }
+  .swatch{ width:10px; height:10px; display:inline-block; border-radius:2px; }
+  #part-hint{ font-size:0.78rem; color: var(--ink-faint); font-family: var(--mono); margin-top:8px;}
+
+  /* Revision stamp */
+  .revstamp{
+    display:inline-block;
+    font-family: var(--mono);
+    font-weight:700;
+    font-size: 0.72rem;
+    color: var(--copper-dark);
+    border: 2px solid var(--copper-dark);
+    padding: 3px 10px;
+    border-radius: 50%;
+    transform: rotate(-6deg);
+    margin-left: 10px;
+  }
+
+  .rev-history{ margin-top:14px; font-family: var(--mono); font-size:0.72rem; color: var(--ink-faint); }
+
+  footer{
+    max-width:1080px; margin: 0 auto; padding: 20px 24px;
+    font-family: var(--mono); font-size:0.7rem; color: var(--ink-faint);
+    display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;
+  }
+
+  .empty-state{
+    text-align:center; padding: 40px 20px; color: var(--ink-faint); font-family: var(--mono); font-size:0.85rem;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .spinner{ animation: none; }
+    .btn:hover{ transform:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="titleblock">
+  <div>
+    <div class="brand">MAKE<span>SPEC</span></div>
+    <div class="tagline">Describe the build. Get the parts, materials, procedure, and a live 3D layout.</div>
+  </div>
+  <div class="stampgrid">
+    <div><span class="label">Sheet</span><span class="value">1 of 1</span></div>
+    <div><span class="label">Date</span><span class="value" id="stamp-date">—</span></div>
+    <div><span class="label">Revision</span><span class="value" id="stamp-rev">0</span></div>
+    <div><span class="label">Status</span><span class="value" id="stamp-status">Draft</span></div>
+  </div>
+</div>
+
+<main>
+
+  <!-- SHEET 1: INPUT -->
+  <section class="sheet">
+    <div class="sheet-head">
+      <span class="sheet-num">01</span>
+      <h2>Project Input</h2>
+    </div>
+    <div class="sheet-body">
+      <label for="idea">Project idea</label>
+      <input type="text" id="idea" placeholder="e.g. Wall-mounted arcade cabinet for a Raspberry Pi">
+
+      <label for="description">Describe it — what it's for, size constraints, style</label>
+      <textarea id="description" placeholder="e.g. Needs to fit above my desk, roughly 40cm wide, should look retro, will be used a few hours a week..."></textarea>
+
+      <div class="row2">
+        <div>
+          <label for="haveparts">Parts / materials you already have</label>
+          <textarea id="haveparts" placeholder="e.g. Raspberry Pi 4, an old 10-inch monitor, a box of M3 screws, plywood offcuts"></textarea>
+        </div>
+        <div>
+          <label for="features">Features you want</label>
+          <textarea id="features" placeholder="e.g. Two-player controls, USB charging port, removable back panel, LED marquee"></textarea>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label for="skill">Your skill level</label>
+          <select id="skill">
+            <option value="beginner">Beginner — basic tools only</option>
+            <option value="intermediate" selected>Intermediate — comfortable with hand + power tools</option>
+            <option value="advanced">Advanced — comfortable with fabrication, wiring, CAD</option>
+          </select>
+        </div>
+        <div>
+          <label for="budget">Rough budget (optional)</label>
+          <input type="text" id="budget" placeholder="e.g. under $150">
+        </div>
+      </div>
+
+      <details class="keybox" id="keybox">
+        <summary>▸ Anthropic API key (required, stored only in your browser)</summary>
+        <div class="keybody">
+          <p>This site calls the Claude API directly from your browser — nothing is sent to any server but Anthropic's. Get a key at
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+          Your key is saved in this browser's local storage only, so you won't need to re-enter it next time on this device.</p>
+          <label for="apikey">API key</label>
+          <input type="password" id="apikey" placeholder="sk-ant-...">
+        </div>
+      </details>
+
+      <div class="actions">
+        <button class="btn" id="generateBtn">Generate spec</button>
+        <span class="status" id="genStatus"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- SHEET 2: OUTPUT -->
+  <section class="sheet" id="outputSheet" style="display:none;">
+    <div class="sheet-head">
+      <span class="sheet-num">02</span>
+      <h2 id="output-title">Generated Spec</h2>
+      <span class="revstamp" id="revBadge" style="display:none;">REV 0</span>
+    </div>
+    <div class="sheet-body">
+      <div id="summaryBlock" style="margin-bottom:20px;"></div>
+
+      <div class="tabs" id="tabs">
+        <div class="tab active" data-tab="parts">Parts list</div>
+        <div class="tab" data-tab="equipment">Equipment</div>
+        <div class="tab" data-tab="materials">Materials</div>
+        <div class="tab" data-tab="procedure">Procedure</div>
+        <div class="tab" data-tab="preview">3D layout</div>
+        <div class="tab" data-tab="notes">Safety &amp; notes</div>
+      </div>
+
+      <div class="tabpanel active" id="panel-parts"></div>
+      <div class="tabpanel" id="panel-equipment"></div>
+      <div class="tabpanel" id="panel-materials"></div>
+      <div class="tabpanel" id="panel-procedure"></div>
+      <div class="tabpanel" id="panel-preview">
+        <div id="canvas-wrap"></div>
+        <div id="part-legend"></div>
+        <div id="part-hint">Drag to orbit, scroll to zoom. This is a rough parametric layout from the AI's stated dimensions — not a precision CAD model.</div>
+      </div>
+      <div class="tabpanel" id="panel-notes"></div>
+
+      <div class="actions">
+        <button class="btn secondary" id="exportBtn">Export as Markdown</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SHEET 3: REVISE -->
+  <section class="sheet" id="reviseSheet" style="display:none;">
+    <div class="sheet-head">
+      <span class="sheet-num">03</span>
+      <h2>Request Changes</h2>
+    </div>
+    <div class="sheet-body">
+      <label for="revisionInput">Describe what to change about the current design</label>
+      <textarea id="revisionInput" placeholder="e.g. Swap the plywood for acrylic, add a coin door, I don't actually have a drill press so avoid needing one"></textarea>
+      <div class="actions">
+        <button class="btn" id="reviseBtn">Apply changes</button>
+        <span class="status" id="reviseStatus"></span>
+      </div>
+      <div class="rev-history" id="revHistory"></div>
+    </div>
+  </section>
+
+  <div class="empty-state" id="emptyState">Fill in sheet 01 and generate a spec to see results here.</div>
+
+</main>
+
+<footer>
+  <span>MAKESPEC — runs entirely in your browser, no backend.</span>
+  <span>Your API key never leaves your device except to call api.anthropic.com directly.</span>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  messages: [],      // full conversation history sent to Claude
+  currentSpec: null,  // parsed JSON of the latest spec
+  revision: 0
+};
+
+const els = {
+  idea: document.getElementById('idea'),
+  description: document.getElementById('description'),
+  haveparts: document.getElementById('haveparts'),
+  features: document.getElementById('features'),
+  skill: document.getElementById('skill'),
+  budget: document.getElementById('budget'),
+  apikey: document.getElementById('apikey'),
+  generateBtn: document.getElementById('generateBtn'),
+  genStatus: document.getElementById('genStatus'),
+  outputSheet: document.getElementById('outputSheet'),
+  reviseSheet: document.getElementById('reviseSheet'),
+  emptyState: document.getElementById('emptyState'),
+  summaryBlock: document.getElementById('summaryBlock'),
+  revBadge: document.getElementById('revBadge'),
+  revisionInput: document.getElementById('revisionInput'),
+  reviseBtn: document.getElementById('reviseBtn'),
+  reviseStatus: document.getElementById('reviseStatus'),
+  revHistory: document.getElementById('revHistory'),
+  exportBtn: document.getElementById('exportBtn'),
+  stampDate: document.getElementById('stamp-date'),
+  stampRev: document.getElementById('stamp-rev'),
+  stampStatus: document.getElementById('stamp-status'),
+};
+
+// Restore saved API key
+const savedKey = localStorage.getItem('makespec_api_key');
+if (savedKey) els.apikey.value = savedKey;
+
+els.stampDate.textContent = new Date().toLocaleDateString();
+
+// ============================================================
+// SYSTEM PROMPT + SCHEMA
+// ============================================================
+const SYSTEM_PROMPT = `You are a meticulous fabrication and DIY project planning assistant. Given a project idea, you produce a complete build spec as STRICT JSON ONLY — no markdown fences, no prose before or after, just a single JSON object.
+
+Schema:
+{
+  "project_title": string,
+  "summary": string (2-4 sentences describing the approach taken),
+  "assumptions": string (assumptions you made to fill gaps),
+  "parts": [
+    {
+      "name": string,
+      "qty": number,
+      "status": "have" | "need",
+      "notes": string,
+      "shape": "box" | "cylinder" | "sphere",
+      "dimensions_mm": { "w": number, "h": number, "d": number, "radius": number },
+      "color_hex": string (a plausible color for this part, e.g. "#8899aa")
+    }
+  ],
+  "equipment": [ { "name": string, "purpose": string } ],
+  "materials": [ { "name": string, "qty": string, "notes": string } ],
+  "procedure": [ { "step_number": number, "title": string, "description": string, "est_time": string } ],
+  "safety_notes": [ string ],
+  "open_questions": [ string ]
+}
+
+Rules:
+- Only include a "have" status for items the user explicitly said they already have; everything else is "need".
+- Give every part sensible real-world dimensions in millimeters so a rough 3D layout can be drawn from them (box parts use w/h/d, cylinder/sphere use radius and h where relevant).
+- Tailor tool/equipment complexity to the stated skill level.
+- Keep procedure steps concrete and ordered; include realistic time estimates.
+- Always include safety_notes relevant to the tools/materials involved.
+- Respond with ONLY the JSON object, nothing else.`;
+
+function buildInitialPrompt(){
+  const parts = [];
+  parts.push(`Project idea: ${els.idea.value.trim() || '(not specified)'}`);
+  parts.push(`Description: ${els.description.value.trim() || '(none given)'}`);
+  parts.push(`Parts/materials already on hand: ${els.haveparts.value.trim() || '(none listed)'}`);
+  parts.push(`Desired features: ${els.features.value.trim() || '(none listed)'}`);
+  parts.push(`Skill level: ${els.skill.value}`);
+  if (els.budget.value.trim()) parts.push(`Budget: ${els.budget.value.trim()}`);
+  parts.push(`\nProduce the full build spec as JSON per the schema.`);
+  return parts.join('\n');
+}
+
+// ============================================================
+// API CALL
+// ============================================================
+async function callClaude(userMessage){
+  const apiKey = els.apikey.value.trim();
+  if (!apiKey){
+    throw new Error('Add your Anthropic API key in the box above first.');
+  }
+  localStorage.setItem('makespec_api_key', apiKey);
+
+  state.messages.push({ role: 'user', content: userMessage });
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      system: SYSTEM_PROMPT,
+      messages: state.messages
+    })
+  });
+
+  if (!res.ok){
+    const errBody = await res.text();
+    let msg = `API error (${res.status})`;
+    try { msg += ': ' + (JSON.parse(errBody).error?.message || errBody); } catch(e) { msg += ': ' + errBody; }
+    // roll back the message we optimistically pushed
+    state.messages.pop();
+    throw new Error(msg);
+  }
+
+  const data = await res.json();
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  const rawText = textBlock ? textBlock.text : '';
+
+  state.messages.push({ role: 'assistant', content: rawText });
+
+  const cleaned = rawText.trim().replace(/^```json\s*/i, '').replace(/^```\s*/,'').replace(/```\s*$/,'');
+  let json;
+  try {
+    json = JSON.parse(cleaned);
+  } catch(e){
+    throw new Error('The model returned something that was not valid JSON. Try again — sometimes rephrasing the idea slightly helps.');
+  }
+  return json;
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function escapeHtml(str){
+  return (str ?? '').toString().replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+
+function renderSpec(spec){
+  state.currentSpec = spec;
+  els.emptyState.style.display = 'none';
+  els.outputSheet.style.display = '';
+  els.reviseSheet.style.display = '';
+
+  document.getElementById('output-title').textContent = spec.project_title || 'Generated Spec';
+
+  els.summaryBlock.innerHTML = `
+    <p style="margin:0 0 8px;">${escapeHtml(spec.summary)}</p>
+    ${spec.assumptions ? `<p style="margin:0; font-size:0.85rem; color:var(--ink-faint);"><strong>Assumptions:</strong> ${escapeHtml(spec.assumptions)}</p>` : ''}
+  `;
+
+  // Parts table
+  const partsRows = (spec.parts || []).map(p => `
+    <tr>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.qty)}</td>
+      <td><span class="tag ${p.status === 'have' ? 'have' : 'need'}">${p.status === 'have' ? 'Have' : 'Need'}</span></td>
+      <td>${escapeHtml(p.notes)}</td>
+    </tr>`).join('');
+  document.getElementById('panel-parts').innerHTML = `
+    <table><thead><tr><th>Part</th><th>Qty</th><th>Status</th><th>Notes</th></tr></thead>
+    <tbody>${partsRows || '<tr><td colspan="4">No parts listed.</td></tr>'}</tbody></table>`;
+
+  // Equipment table
+  const eqRows = (spec.equipment || []).map(e => `
+    <tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.purpose)}</td></tr>`).join('');
+  document.getElementById('panel-equipment').innerHTML = `
+    <table><thead><tr><th>Tool / Equipment</th><th>Purpose</th></tr></thead>
+    <tbody>${eqRows || '<tr><td colspan="2">No equipment listed.</td></tr>'}</tbody></table>`;
+
+  // Materials table
+  const matRows = (spec.materials || []).map(m => `
+    <tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.qty)}</td><td>${escapeHtml(m.notes)}</td></tr>`).join('');
+  document.getElementById('panel-materials').innerHTML = `
+    <table><thead><tr><th>Material</th><th>Qty</th><th>Notes</th></tr></thead>
+    <tbody>${matRows || '<tr><td colspan="3">No materials listed.</td></tr>'}</tbody></table>`;
+
+  // Procedure
+  const stepsHtml = (spec.procedure || []).map(s => `
+    <div class="procedure-step">
+      <div class="step-num">${escapeHtml(s.step_number)}</div>
+      <div>
+        <div class="step-title">${escapeHtml(s.title)}<span class="step-time">${escapeHtml(s.est_time || '')}</span></div>
+        <div class="step-desc">${escapeHtml(s.description)}</div>
+      </div>
+    </div>`).join('');
+  document.getElementById('panel-procedure').innerHTML = stepsHtml || '<p>No procedure listed.</p>';
+
+  // Notes
+  const safety = (spec.safety_notes || []).map(n => `<li>${escapeHtml(n)}</li>`).join('');
+  const questions = (spec.open_questions || []).map(n => `<li>${escapeHtml(n)}</li>`).join('');
+  document.getElementById('panel-notes').innerHTML = `
+    <h3 style="font-family:var(--mono); font-size:0.85rem; text-transform:uppercase;">Safety notes</h3>
+    <ul class="notice-list">${safety || '<li>None flagged.</li>'}</ul>
+    <h3 style="font-family:var(--mono); font-size:0.85rem; text-transform:uppercase; margin-top:20px;">Open questions</h3>
+    <ul class="notice-list questions">${questions || '<li>None.</li>'}</ul>
+  `;
+
+  render3D(spec.parts || []);
+}
+
+// ============================================================
+// TABS
+// ============================================================
+document.getElementById('tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tabpanel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  if (tab.dataset.tab === 'preview') onResize();
+});
+
+// ============================================================
+// 3D PREVIEW (Three.js) — parametric layout of parts as primitives
+// ============================================================
+let renderer, scene, camera, animFrame, partMeshes = [];
+
+function initThree(){
+  const wrap = document.getElementById('canvas-wrap');
+  wrap.innerHTML = '';
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  wrap.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 5000);
+  camera.position.set(300, 260, 420);
+  camera.lookAt(0,0,0);
+
+  const grid = new THREE.GridHelper(600, 24, 0x3a5468, 0x223140);
+  scene.add(grid);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.65);
+  scene.add(ambient);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+  dir.position.set(200, 400, 300);
+  scene.add(dir);
+
+  // simple manual orbit via mouse drag
+  let isDown = false, lastX = 0, lastY = 0, theta = 0.7, phi = 0.9, radius = 550;
+  function updateCam(){
+    camera.position.x = radius * Math.sin(phi) * Math.sin(theta);
+    camera.position.y = radius * Math.cos(phi);
+    camera.position.z = radius * Math.sin(phi) * Math.cos(theta);
+    camera.lookAt(0,0,0);
+  }
+  updateCam();
+  renderer.domElement.addEventListener('mousedown', e => { isDown = true; lastX = e.clientX; lastY = e.clientY; });
+  window.addEventListener('mouseup', () => isDown = false);
+  window.addEventListener('mousemove', e => {
+    if (!isDown) return;
+    theta -= (e.clientX - lastX) * 0.006;
+    phi = Math.min(Math.max(phi - (e.clientY - lastY) * 0.006, 0.15), Math.PI - 0.15);
+    lastX = e.clientX; lastY = e.clientY;
+    updateCam();
+  });
+  renderer.domElement.addEventListener('wheel', e => {
+    e.preventDefault();
+    radius = Math.min(Math.max(radius + e.deltaY * 0.4, 100), 1400);
+    updateCam();
+  }, { passive: false });
+
+  function animate(){
+    animFrame = requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+function render3D(parts){
+  if (animFrame) cancelAnimationFrame(animFrame);
+  initThree();
+  partMeshes = [];
+
+  const legend = document.getElementById('part-legend');
+  legend.innerHTML = '';
+
+  // arrange parts on a grid footprint, scaled down to fit a ~500mm stage
+  const cols = Math.ceil(Math.sqrt(parts.length || 1));
+  const cellSize = 130;
+
+  parts.forEach((p, i) => {
+    const dims = p.dimensions_mm || {};
+    const scale = 0.3; // mm -> scene units, roughly
+    let geometry;
+    let footprint = 60;
+
+    if (p.shape === 'cylinder'){
+      const r = clamp((dims.radius || 20) * scale, 4, 90);
+      const h = clamp((dims.h || dims.height || 40) * scale, 4, 220);
+      geometry = new THREE.CylinderGeometry(r, r, h, 24);
+      footprint = r * 2;
+    } else if (p.shape === 'sphere'){
+      const r = clamp((dims.radius || 20) * scale, 4, 90);
+      geometry = new THREE.SphereGeometry(r, 20, 16);
+      footprint = r * 2;
+    } else {
+      const w = clamp((dims.w || 40) * scale, 4, 220);
+      const h = clamp((dims.h || 40) * scale, 4, 220);
+      const d = clamp((dims.d || 40) * scale, 4, 220);
+      geometry = new THREE.BoxGeometry(w, h, d);
+      footprint = Math.max(w, d);
+    }
+
+    const color = /^#([0-9a-f]{3}){1,2}$/i.test(p.color_hex || '') ? p.color_hex : '#8fa6b8';
+    const material = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.15 });
+    const mesh = new THREE.Mesh(geometry, material);
+
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = (col - (cols - 1) / 2) * cellSize;
+    const z = (row - (cols - 1) / 2) * cellSize;
+    mesh.geometry.computeBoundingBox();
+    const yOffset = (mesh.geometry.boundingBox.max.y - mesh.geometry.boundingBox.min.y) / 2;
+    mesh.position.set(x, yOffset, z);
+    mesh.userData.label = p.name;
+    scene.add(mesh);
+    partMeshes.push(mesh);
+
+    const chip = document.createElement('div');
+    chip.className = 'legend-chip';
+    chip.innerHTML = `<span class="swatch" style="background:${color};"></span>${escapeHtml(p.name)}`;
+    chip.addEventListener('click', () => {
+      const dim = chip.classList.toggle('dim');
+      mesh.visible = !dim;
+    });
+    legend.appendChild(chip);
+  });
+
+  if (!parts.length){
+    document.getElementById('canvas-wrap').insertAdjacentHTML('beforeend',
+      '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#7C8B99; font-family:var(--mono); font-size:0.8rem;">No parts to lay out.</div>');
+  }
+}
+
+function onResize(){
+  if (!renderer) return;
+  const wrap = document.getElementById('canvas-wrap');
+  if (!wrap.clientWidth || !wrap.clientHeight) return;
+  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  camera.aspect = wrap.clientWidth / wrap.clientHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+
+// ============================================================
+// GENERATE / REVISE HANDLERS
+// ============================================================
+function setBusy(button, statusEl, busy, busyText){
+  button.disabled = busy;
+  statusEl.className = 'status';
+  statusEl.innerHTML = busy ? `<span class="spinner"></span>${busyText}` : '';
+}
+
+els.generateBtn.addEventListener('click', async () => {
+  if (!els.idea.value.trim()){
+    els.genStatus.className = 'status err';
+    els.genStatus.textContent = 'Give it at least a project idea first.';
+    return;
+  }
+  setBusy(els.generateBtn, els.genStatus, true, 'Drafting spec…');
+  try {
+    state.messages = [];
+    state.revision = 0;
+    const spec = await callClaude(buildInitialPrompt());
+    renderSpec(spec);
+    els.stampRev.textContent = '0';
+    els.stampStatus.textContent = 'Generated';
+    els.revBadge.style.display = 'none';
+    els.revHistory.innerHTML = '';
+    els.genStatus.className = 'status ok';
+    els.genStatus.textContent = 'Spec generated.';
+    els.outputSheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(err){
+    els.genStatus.className = 'status err';
+    els.genStatus.textContent = err.message;
+  } finally {
+    setBusy(els.generateBtn, els.genStatus, false, '');
+    els.generateBtn.disabled = false;
+    els.generateBtn.textContent = 'Generate spec';
+  }
+});
+
+els.reviseBtn.addEventListener('click', async () => {
+  const request = els.revisionInput.value.trim();
+  if (!request){
+    els.reviseStatus.className = 'status err';
+    els.reviseStatus.textContent = 'Describe what you want changed first.';
+    return;
+  }
+  setBusy(els.reviseBtn, els.reviseStatus, true, 'Reworking design…');
+  try {
+    const spec = await callClaude(`Please update the build spec with this change request: ${request}\n\nReturn the full, updated JSON spec (same schema), not just the changed parts.`);
+    renderSpec(spec);
+    state.revision += 1;
+    els.stampRev.textContent = state.revision;
+    els.stampStatus.textContent = 'Revised';
+    els.revBadge.style.display = '';
+    els.revBadge.textContent = `REV ${state.revision}`;
+    const entry = document.createElement('div');
+    entry.textContent = `REV ${state.revision} — ${request}`;
+    els.revHistory.prepend(entry);
+    els.revisionInput.value = '';
+    els.reviseStatus.className = 'status ok';
+    els.reviseStatus.textContent = 'Applied.';
+    els.outputSheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(err){
+    els.reviseStatus.className = 'status err';
+    els.reviseStatus.textContent = err.message;
+  } finally {
+    setBusy(els.reviseBtn, els.reviseStatus, false, '');
+    els.reviseBtn.disabled = false;
+    els.reviseBtn.textContent = 'Apply changes';
+  }
+});
+
+els.exportBtn.addEventListener('click', () => {
+  const spec = state.currentSpec;
+  if (!spec) return;
+  const lines = [];
+  lines.push(`# ${spec.project_title || 'Project Spec'}`);
+  lines.push('', spec.summary || '', '');
+  if (spec.assumptions) lines.push(`**Assumptions:** ${spec.assumptions}`, '');
+
+  lines.push('## Parts list', '');
+  (spec.parts || []).forEach(p => lines.push(`- [${p.status === 'have' ? 'x' : ' '}] ${p.qty}x ${p.name} — ${p.notes || ''}`));
+  lines.push('', '## Equipment', '');
+  (spec.equipment || []).forEach(e => lines.push(`- ${e.name} — ${e.purpose || ''}`));
+  lines.push('', '## Materials', '');
+  (spec.materials || []).forEach(m => lines.push(`- ${m.qty} ${m.name} — ${m.notes || ''}`));
+  lines.push('', '## Procedure', '');
+  (spec.procedure || []).forEach(s => lines.push(`${s.step_number}. **${s.title}** (${s.est_time || ''}) — ${s.description}`));
+  lines.push('', '## Safety notes', '');
+  (spec.safety_notes || []).forEach(n => lines.push(`- ${n}`));
+  lines.push('', '## Open questions', '');
+  (spec.open_questions || []).forEach(n => lines.push(`- ${n}`));
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(spec.project_title || 'project-spec').toLowerCase().replace(/[^a-z0-9]+/g,'-')}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>
