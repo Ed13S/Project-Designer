@@ -104,57 +104,6 @@
     padding: 40px 24px 0;
   }
 
-  /* ===== Callout Boxes ===== */
-  .callout-box {
-    padding: 20px;
-    border: 2px solid var(--warning-border);
-    background-color: var(--warning-bg);
-    border-radius: var(--radius);
-    margin-bottom: 32px;
-    box-shadow: 4px 4px 0 rgba(217, 167, 20, 0.15);
-  }
-
-  .callout-box h3 {
-    margin: 0 0 12px 0;
-    font-family: var(--mono);
-    font-size: 0.95rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--copper-dark);
-    font-weight: 700;
-  }
-
-  .callout-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-  }
-  @media (max-width: 768px) { .callout-grid { grid-template-columns: 1fr; gap: 16px; } }
-
-  .callout-section h4 {
-    margin: 0 0 8px 0;
-    font-family: var(--mono);
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--ink);
-  }
-
-  .callout-box ul {
-    margin: 0;
-    padding-left: 20px;
-    font-size: 0.88rem;
-    color: var(--ink-soft);
-  }
-
-  .callout-box li {
-    margin-bottom: 6px;
-  }
-
-  .callout-box li:last-child {
-    margin-bottom: 0;
-  }
-
   /* ===== Sheets ===== */
   .sheet {
     background: var(--white);
@@ -581,6 +530,10 @@
         <div id="part-hint">Drag to orbit, scroll to zoom. This is a rough parametric layout from the AI's stated dimensions — not a precision CAD model.</div>
       </div>
       <div class="tabpanel" id="panel-notes"></div>
+
+      <div class="actions">
+        <button class="btn secondary" id="exportBtn">Export as Markdown</button>
+      </div>
     </div>
   </section>
 
@@ -712,6 +665,7 @@ const els = {
   reviseBtn: document.getElementById('reviseBtn'),
   reviseStatus: document.getElementById('reviseStatus'),
   revHistory: document.getElementById('revHistory'),
+  exportBtn: document.getElementById('exportBtn'),
   stampDate: document.getElementById('stamp-date'),
   stampRev: document.getElementById('stamp-rev'),
   stampStatus: document.getElementById('stamp-status'),
@@ -1107,6 +1061,45 @@ els.reviseBtn.addEventListener('click', async () => {
   } finally {
     setBusy(els.reviseBtn, els.reviseStatus, false, '');
   }
+});
+
+els.exportBtn.addEventListener('click', () => {
+  if (!state.currentSpec) return;
+  const s = state.currentSpec;
+  const md = [];
+  md.push(`# ${s.project_title || 'Project Spec'}`);
+  md.push(`\n## Summary\n${s.summary || ''}`);
+  if (s.assumptions) md.push(`\n**Assumptions:** ${s.assumptions}`);
+
+  md.push('\n## Parts List');
+  md.push('| Part | Qty | Status | Notes |');
+  md.push('| --- | --- | --- | --- |');
+  (s.parts || []).forEach(p => md.push(`| ${p.name} | ${p.qty} | ${p.status} | ${p.notes} |`));
+
+  md.push('\n## Equipment & Tools');
+  md.push('| Tool | Purpose |');
+  md.push('| --- | --- |');
+  (s.equipment || []).forEach(e => md.push(`| ${e.name} | ${e.purpose} |`));
+
+  md.push('\n## Materials');
+  md.push('| Material | Qty | Notes |');
+  md.push('| --- | --- | --- |');
+  (s.materials || []).forEach(m => md.push(`| ${m.name} | ${m.qty} | ${m.notes} |`));
+
+  md.push('\n## Procedure');
+  (s.procedure || []).forEach(p => md.push(`${p.step_number}. **${p.title}** (${p.est_time || 'N/A'})\n   ${p.description}`));
+
+  md.push('\n## Safety Notes');
+  (s.safety_notes || []).forEach(n => md.push(`- ${n}`));
+
+  md.push('\n## Open Questions');
+  (s.open_questions || []).forEach(q => md.push(`- ${q}`));
+
+  const blob = new Blob([md.join('\n')], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${(s.project_title || 'spec').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_spec.md`;
+  a.click();
 });
 </script>
 </body>
