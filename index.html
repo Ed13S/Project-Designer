@@ -748,6 +748,14 @@ const els = {
 loadProfiles();
 renderAccountGrid();
 
+// Real-time listener saving API credentials context safely on input changes
+els.apikey.addEventListener('input', () => {
+  if (profiles[activeProfileId]) {
+    profiles[activeProfileId].key = els.apikey.value.trim();
+    saveProfiles();
+  }
+});
+
 els.stampDate.textContent = new Date().toLocaleDateString();
 
 // ============================================================
@@ -936,7 +944,10 @@ document.getElementById('tabs').addEventListener('click', (e) => {
   document.querySelectorAll('.tabpanel').forEach(p => p.classList.remove('active'));
   tab.classList.add('active');
   document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
-  if (tab.dataset.tab === 'preview') onResize();
+  if (tab.dataset.tab === 'preview') {
+    // Wrap canvas reflow inside animation frame to avoid zero-dimension sizing glitches
+    requestAnimationFrame(() => onResize());
+  }
 });
 
 // ============================================================
@@ -974,6 +985,8 @@ function initThree(){
     camera.lookAt(0,0,0);
   }
   updateCam();
+  
+  // Mouse listeners
   renderer.domElement.addEventListener('mousedown', e => { isDown = true; lastX = e.clientX; lastY = e.clientY; });
   window.addEventListener('mouseup', () => isDown = false);
   window.addEventListener('mousemove', e => {
@@ -983,6 +996,25 @@ function initThree(){
     lastX = e.clientX; lastY = e.clientY;
     updateCam();
   });
+  
+  // Touchscreen interactive support listeners
+  renderer.domElement.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      isDown = true;
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+  window.addEventListener('touchend', () => isDown = false);
+  window.addEventListener('touchmove', e => {
+    if (!isDown || e.touches.length !== 1) return;
+    theta -= (e.touches[0].clientX - lastX) * 0.006;
+    phi = Math.min(Math.max(phi - (e.touches[0].clientY - lastY) * 0.006, 0.15), Math.PI - 0.15);
+    lastX = e.touches[0].clientX;
+    lastY = e.touches[0].clientY;
+    updateCam();
+  }, { passive: true });
+
   renderer.domElement.addEventListener('wheel', e => {
     e.preventDefault();
     radius = Math.min(Math.max(radius + e.deltaY * 0.4, 100), 1400);
@@ -1106,7 +1138,6 @@ els.generateBtn.addEventListener('click', async () => {
     els.genStatus.textContent = err.message;
   } finally {
     setBusy(els.generateBtn, els.genStatus, false, '');
-    els.generateBtn.disabled = false;
     els.generateBtn.textContent = 'Generate spec';
   }
 });
