@@ -331,7 +331,6 @@
 
 <main>
 
-  <!-- SHEET 1: INPUT -->
   <section class="sheet">
     <div class="sheet-head">
       <span class="sheet-num">01</span>
@@ -371,13 +370,13 @@
       </div>
 
       <details class="keybox" id="keybox">
-        <summary>▸ Anthropic API key (required, stored only in your browser)</summary>
+        <summary>▸ Gemini API key (required, stored only in your browser)</summary>
         <div class="keybody">
-          <p>This site calls the Claude API directly from your browser — nothing is sent to any server but Anthropic's. Get a key at
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+          <p>This site calls the Gemini API directly from your browser — nothing is sent to any server but Google's. Get a key at
+          <a href="https://aistudio.google.com/" target="_blank" rel="noopener">aistudio.google.com</a>.
           Your key is saved in this browser's local storage only, so you won't need to re-enter it next time on this device.</p>
           <label for="apikey">API key</label>
-          <input type="password" id="apikey" placeholder="sk-ant-...">
+          <input type="password" id="apikey" placeholder="AIzaSy...">
         </div>
       </details>
 
@@ -388,7 +387,6 @@
     </div>
   </section>
 
-  <!-- SHEET 2: OUTPUT -->
   <section class="sheet" id="outputSheet" style="display:none;">
     <div class="sheet-head">
       <span class="sheet-num">02</span>
@@ -424,7 +422,6 @@
     </div>
   </section>
 
-  <!-- SHEET 3: REVISE -->
   <section class="sheet" id="reviseSheet" style="display:none;">
     <div class="sheet-head">
       <span class="sheet-num">03</span>
@@ -447,7 +444,7 @@
 
 <footer>
   <span>MAKESPEC — runs entirely in your browser, no backend.</span>
-  <span>Your API key never leaves your device except to call api.anthropic.com directly.</span>
+  <span>Your API key never leaves your device except to call generativelanguage.googleapis.com directly.</span>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -456,7 +453,7 @@
 // STATE
 // ============================================================
 const state = {
-  messages: [],      // full conversation history sent to Claude
+  messages: [],      // full conversation history sent to Gemini
   currentSpec: null,  // parsed JSON of the latest spec
   revision: 0
 };
@@ -541,30 +538,37 @@ function buildInitialPrompt(){
 }
 
 // ============================================================
-// API CALL
+// API CALL (Updated for Gemini API)
 // ============================================================
-async function callClaude(userMessage){
+async function callGemini(userMessage){
   const apiKey = els.apikey.value.trim();
   if (!apiKey){
-    throw new Error('Add your Anthropic API key in the box above first.');
+    throw new Error('Add your Gemini API key in the box above first.');
   }
   localStorage.setItem('makespec_api_key', apiKey);
 
   state.messages.push({ role: 'user', content: userMessage });
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const contents = state.messages.map(msg => ({
+    role: msg.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: msg.content }]
+  }));
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
-      system: SYSTEM_PROMPT,
-      messages: state.messages
+      contents: contents,
+      systemInstruction: {
+        parts: [{ text: SYSTEM_PROMPT }]
+      },
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
     })
   });
 
@@ -572,21 +576,18 @@ async function callClaude(userMessage){
     const errBody = await res.text();
     let msg = `API error (${res.status})`;
     try { msg += ': ' + (JSON.parse(errBody).error?.message || errBody); } catch(e) { msg += ': ' + errBody; }
-    // roll back the message we optimistically pushed
     state.messages.pop();
     throw new Error(msg);
   }
 
   const data = await res.json();
-  const textBlock = (data.content || []).find(b => b.type === 'text');
-  const rawText = textBlock ? textBlock.text : '';
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
   state.messages.push({ role: 'assistant', content: rawText });
 
-  const cleaned = rawText.trim().replace(/^```json\s*/i, '').replace(/^```\s*/,'').replace(/```\s*$/,'');
   let json;
   try {
-    json = JSON.parse(cleaned);
+    json = JSON.parse(rawText.trim());
   } catch(e){
     throw new Error('The model returned something that was not valid JSON. Try again — sometimes rephrasing the idea slightly helps.');
   }
@@ -831,7 +832,7 @@ els.generateBtn.addEventListener('click', async () => {
   try {
     state.messages = [];
     state.revision = 0;
-    const spec = await callClaude(buildInitialPrompt());
+    const spec = await callGemini(buildInitialPrompt());
     renderSpec(spec);
     els.stampRev.textContent = '0';
     els.stampStatus.textContent = 'Generated';
@@ -851,66 +852,68 @@ els.generateBtn.addEventListener('click', async () => {
 });
 
 els.reviseBtn.addEventListener('click', async () => {
-  const request = els.revisionInput.value.trim();
-  if (!request){
-    els.reviseStatus.className = 'status err';
-    els.reviseStatus.textContent = 'Describe what you want changed first.';
-    return;
-  }
-  setBusy(els.reviseBtn, els.reviseStatus, true, 'Reworking design…');
+  const req = els.revisionInput.value.trim();
+  if (!req) return;
+  setBusy(els.reviseBtn, els.reviseStatus, true, 'Applying revision…');
   try {
-    const spec = await callClaude(`Please update the build spec with this change request: ${request}\n\nReturn the full, updated JSON spec (same schema), not just the changed parts.`);
+    const spec = await callGemini(`Revision request: ${req}\nUpdate the build spec JSON accordingly.`);
+    state.revision++;
     renderSpec(spec);
-    state.revision += 1;
     els.stampRev.textContent = state.revision;
     els.stampStatus.textContent = 'Revised';
-    els.revBadge.style.display = '';
     els.revBadge.textContent = `REV ${state.revision}`;
-    const entry = document.createElement('div');
-    entry.textContent = `REV ${state.revision} — ${request}`;
-    els.revHistory.prepend(entry);
+    els.revBadge.style.display = '';
+
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    els.revHistory.insertAdjacentHTML('afterbegin', `<div><strong>Rev ${state.revision}</strong> (${time}): ${escapeHtml(req)}</div>`);
     els.revisionInput.value = '';
     els.reviseStatus.className = 'status ok';
-    els.reviseStatus.textContent = 'Applied.';
-    els.outputSheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    els.reviseStatus.textContent = 'Revision applied.';
   } catch(err){
     els.reviseStatus.className = 'status err';
     els.reviseStatus.textContent = err.message;
   } finally {
     setBusy(els.reviseBtn, els.reviseStatus, false, '');
-    els.reviseBtn.disabled = false;
-    els.reviseBtn.textContent = 'Apply changes';
   }
 });
 
 els.exportBtn.addEventListener('click', () => {
-  const spec = state.currentSpec;
-  if (!spec) return;
-  const lines = [];
-  lines.push(`# ${spec.project_title || 'Project Spec'}`);
-  lines.push('', spec.summary || '', '');
-  if (spec.assumptions) lines.push(`**Assumptions:** ${spec.assumptions}`, '');
+  if (!state.currentSpec) return;
+  const s = state.currentSpec;
+  const md = [];
+  md.push(`# ${s.project_title || 'Project Spec'}`);
+  md.push(`\n## Summary\n${s.summary || ''}`);
+  if (s.assumptions) md.push(`\n**Assumptions:** ${s.assumptions}`);
 
-  lines.push('## Parts list', '');
-  (spec.parts || []).forEach(p => lines.push(`- [${p.status === 'have' ? 'x' : ' '}] ${p.qty}x ${p.name} — ${p.notes || ''}`));
-  lines.push('', '## Equipment', '');
-  (spec.equipment || []).forEach(e => lines.push(`- ${e.name} — ${e.purpose || ''}`));
-  lines.push('', '## Materials', '');
-  (spec.materials || []).forEach(m => lines.push(`- ${m.qty} ${m.name} — ${m.notes || ''}`));
-  lines.push('', '## Procedure', '');
-  (spec.procedure || []).forEach(s => lines.push(`${s.step_number}. **${s.title}** (${s.est_time || ''}) — ${s.description}`));
-  lines.push('', '## Safety notes', '');
-  (spec.safety_notes || []).forEach(n => lines.push(`- ${n}`));
-  lines.push('', '## Open questions', '');
-  (spec.open_questions || []).forEach(n => lines.push(`- ${n}`));
+  md.push('\n## Parts List');
+  md.push('| Part | Qty | Status | Notes |');
+  md.push('| --- | --- | --- | --- |');
+  (s.parts || []).forEach(p => md.push(`| ${p.name} | ${p.qty} | ${p.status} | ${p.notes} |`));
 
-  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
+  md.push('\n## Equipment & Tools');
+  md.push('| Tool | Purpose |');
+  md.push('| --- | --- |');
+  (s.equipment || []).forEach(e => md.push(`| ${e.name} | ${e.purpose} |`));
+
+  md.push('\n## Materials');
+  md.push('| Material | Qty | Notes |');
+  md.push('| --- | --- | --- |');
+  (s.materials || []).forEach(m => md.push(`| ${m.name} | ${m.qty} | ${m.notes} |`));
+
+  md.push('\n## Procedure');
+  (s.procedure || []).forEach(p => md.push(`${p.step_number}. **${p.title}** (${p.est_time || 'N/A'})\n   ${p.description}`));
+
+  md.push('\n## Safety Notes');
+  (s.safety_notes || []).forEach(n => md.push(`- ${n}`));
+
+  md.push('\n## Open Questions');
+  (s.open_questions || []).forEach(q => md.push(`- ${q}`));
+
+  const blob = new Blob([md.join('\n')], { type: 'text/markdown' });
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `${(spec.project_title || 'project-spec').toLowerCase().replace(/[^a-z0-9]+/g,'-')}.md`;
+  a.href = URL.createObjectURL(blob);
+  a.download = `${(s.project_title || 'spec').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_spec.md`;
   a.click();
-  URL.revokeObjectURL(url);
 });
 </script>
 </body>
