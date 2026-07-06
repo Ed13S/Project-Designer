@@ -38,5 +38,5 @@ The system operates entirely within a decentralized client-side runtime, bypassi
 1. **Local Initialization**
    Clone the workspace index container and navigate to the root path:
    ```bash
-   git clone [https://github.com/](https://github.com/)<your-username>/makespec.git
+   git clone [https://github.com/](https://github.com/)Ed13s/makespec.git
    cd makespec
