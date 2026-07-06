@@ -532,7 +532,9 @@
       <div class="tabpanel" id="panel-notes"></div>
 
       <div class="actions">
-        <button class="btn secondary" id="exportBtn">Export as Markdown</button>
+        <button class="btn secondary" id="exportBtn">Export Spec</button>
+        <button class="btn secondary" id="importBtn">Import Spec</button>
+        <input type="file" id="importFile" accept=".json" style="display: none;">
       </div>
     </div>
   </section>
@@ -553,7 +555,7 @@
     </div>
   </section>
 
-  <div class="empty-state" id="emptyState">Fill in sheet 01 and generate a spec to see results here.</div>
+  <div class="empty-state" id="emptyState">Fill in sheet 01 and generate a spec to see results here. Or <a href="#" id="importEmptyLink" style="border-bottom-style:solid; cursor:pointer;">Import a previously saved JSON Spec</a>.</div>
 
 </main>
 
@@ -666,6 +668,9 @@ const els = {
   reviseStatus: document.getElementById('reviseStatus'),
   revHistory: document.getElementById('revHistory'),
   exportBtn: document.getElementById('exportBtn'),
+  importBtn: document.getElementById('importBtn'),
+  importFile: document.getElementById('importFile'),
+  importEmptyLink: document.getElementById('importEmptyLink'),
   stampDate: document.getElementById('stamp-date'),
   stampRev: document.getElementById('stamp-rev'),
   stampStatus: document.getElementById('stamp-status'),
@@ -872,6 +877,7 @@ let renderer, scene, camera, animFrame, partMeshes = [];
 
 function initThree(){
   const wrap = document.getElementById('canvas-wrap');
+  if(!wrap) return;
   wrap.innerHTML = '';
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(wrap.clientWidth, wrap.clientHeight);
@@ -930,6 +936,7 @@ function render3D(parts){
   partMeshes = [];
 
   const legend = document.getElementById('part-legend');
+  if(!legend) return;
   legend.innerHTML = '';
 
   const cols = Math.ceil(Math.sqrt(parts.length || 1));
@@ -992,7 +999,7 @@ function render3D(parts){
 function onResize(){
   if (!renderer) return;
   const wrap = document.getElementById('canvas-wrap');
-  if (!wrap.clientWidth || !wrap.clientHeight) return;
+  if (!wrap || !wrap.clientWidth || !wrap.clientHeight) return;
   renderer.setSize(wrap.clientWidth, wrap.clientHeight);
   camera.aspect = wrap.clientWidth / wrap.clientHeight;
   camera.updateProjectionMatrix();
@@ -1063,43 +1070,88 @@ els.reviseBtn.addEventListener('click', async () => {
   }
 });
 
+// ============================================================
+// IMPORT / EXPORT ENGINE (Uniform Bidirectional State via JSON)
+// ============================================================
 els.exportBtn.addEventListener('click', () => {
   if (!state.currentSpec) return;
-  const s = state.currentSpec;
-  const md = [];
-  md.push(`# ${s.project_title || 'Project Spec'}`);
-  md.push(`\n## Summary\n${s.summary || ''}`);
-  if (s.assumptions) md.push(`\n**Assumptions:** ${s.assumptions}`);
+  
+  const packageData = {
+    makespec_version: "2.0.0",
+    form_inputs: {
+      idea: els.idea.value,
+      description: els.description.value,
+      haveparts: els.haveparts.value,
+      features: els.features.value,
+      skill: els.skill.value,
+      budget: els.budget.value
+    },
+    state: {
+      messages: state.messages,
+      currentSpec: state.currentSpec,
+      revision: state.revision,
+      history_html: els.revHistory.innerHTML
+    }
+  };
 
-  md.push('\n## Parts List');
-  md.push('| Part | Qty | Status | Notes |');
-  md.push('| --- | --- | --- | --- |');
-  (s.parts || []).forEach(p => md.push(`| ${p.name} | ${p.qty} | ${p.status} | ${p.notes} |`));
-
-  md.push('\n## Equipment & Tools');
-  md.push('| Tool | Purpose |');
-  md.push('| --- | --- |');
-  (s.equipment || []).forEach(e => md.push(`| ${e.name} | ${e.purpose} |`));
-
-  md.push('\n## Materials');
-  md.push('| Material | Qty | Notes |');
-  md.push('| --- | --- | --- |');
-  (s.materials || []).forEach(m => md.push(`| ${m.name} | ${m.qty} | ${m.notes} |`));
-
-  md.push('\n## Procedure');
-  (s.procedure || []).forEach(p => md.push(`${p.step_number}. **${p.title}** (${p.est_time || 'N/A'})\n   ${p.description}`));
-
-  md.push('\n## Safety Notes');
-  (s.safety_notes || []).forEach(n => md.push(`- ${n}`));
-
-  md.push('\n## Open Questions');
-  (s.open_questions || []).forEach(q => md.push(`- ${q}`));
-
-  const blob = new Blob([md.join('\n')], { type: 'text/markdown' });
+  const blob = new Blob([JSON.stringify(packageData, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${(s.project_title || 'spec').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_spec.md`;
+  a.download = `${(state.currentSpec.project_title || 'spec').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_spec.json`;
   a.click();
+});
+
+function triggersImportSelector() {
+  els.importFile.click();
+}
+
+els.importBtn.addEventListener('click', triggersImportSelector);
+els.importEmptyLink.addEventListener('click', (e) => { e.preventDefault(); triggersImportSelector(); });
+
+els.importFile.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const data = JSON.parse(evt.target.result);
+      if (!data.currentSpec && !data.state) {
+        throw new Error("Invalid structure format.");
+      }
+      
+      const targetInputs = data.form_inputs || {};
+      els.idea.value = targetInputs.idea || data.currentSpec?.project_title || '';
+      els.description.value = targetInputs.description || '';
+      els.haveparts.value = targetInputs.haveparts || '';
+      els.features.value = targetInputs.features || '';
+      if (targetInputs.skill) els.skill.value = targetInputs.skill;
+      els.budget.value = targetInputs.budget || '';
+
+      const targetState = data.state || { messages: [], currentSpec: data, revision: 0, history_html: '' };
+      state.messages = targetState.messages || [];
+      state.revision = targetState.revision || 0;
+      
+      renderSpec(targetState.currentSpec);
+      
+      els.stampRev.textContent = state.revision;
+      els.stampStatus.textContent = state.revision > 0 ? 'Revised' : 'Generated';
+      els.revHistory.innerHTML = targetState.history_html || '';
+      
+      if (state.revision > 0) {
+        els.revBadge.textContent = `REV ${state.revision}`;
+        els.revBadge.style.display = '';
+      } else {
+        els.revBadge.style.display = 'none';
+      }
+
+      els.outputSheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      alert("Failed to parse spec layout file: " + err.message);
+    }
+    els.importFile.value = '';
+  };
+  reader.readAsText(file);
 });
 </script>
 </body>
