@@ -147,8 +147,13 @@
     color: var(--ink-soft);
   }
 
-  .callout-box li { margin-bottom: 6px; }
-  .callout-box li:last-child { margin-bottom: 0; }
+  .callout-box li {
+    margin-bottom: 6px;
+  }
+
+  .callout-box li:last-child {
+    margin-bottom: 0;
+  }
 
   /* ===== Sheets ===== */
   .sheet {
@@ -250,6 +255,8 @@
   .btn:disabled { background: var(--paper-deep); border-color: var(--ink-faint); color: var(--ink-faint); cursor: not-allowed; box-shadow: none; transform: none; }
   .btn.secondary { background: var(--white); color: var(--ink); }
   .btn.secondary:hover { background: var(--paper); }
+  .btn.danger { background: var(--white); color: var(--danger); border-color: var(--danger); box-shadow: 3px 3px 0 var(--danger); }
+  .btn.danger:hover { background: var(--danger); color: var(--white); box-shadow: 4px 4px 0 var(--ink); }
 
   details.keybox { margin-top: 24px; border: 1px dashed var(--ink-faint); border-radius: var(--radius); background: #F4F7FA; transition: var(--transition); }
   details.keybox[open] { background: var(--paper-deep); border-style: solid; border-color: var(--ink); }
@@ -297,7 +304,6 @@
     display: flex;
     gap: 8px;
     margin-top: 12px;
-    flex-wrap: wrap;
   }
   .btn-sm {
     font-family: var(--mono);
@@ -512,14 +518,11 @@
     <div class="sheet-body">
       
       <div class="account-selector-wrap">
-        <label>Active Project Profile</label>
+        <label>Active Account Profile</label>
         <div class="account-grid" id="accountGrid"></div>
         <div class="account-actions">
-          <button type="button" class="btn-sm" id="addAccountBtn">New Project Profile</button>
+          <button type="button" class="btn-sm" id="addAccountBtn">New Account</button>
           <button type="button" class="btn-sm" id="deleteAccountBtn" style="color: var(--danger); border-color: var(--danger);">Delete Current</button>
-          <button type="button" class="btn-sm" id="exportBackupBtn" style="color: var(--copper-dark); border-color: var(--copper);">Export Project to Markdown File</button>
-          <button type="button" class="btn-sm" id="importBackupBtn" style="color: var(--pine); border-color: var(--pine);">Import Profile from Markdown File</button>
-          <input type="file" id="backupFileInput" style="display: none;" accept=".md">
         </div>
       </div>
 
@@ -603,7 +606,7 @@
       <div class="tabpanel" id="panel-notes"></div>
 
       <div class="actions">
-        <button class="btn secondary" id="exportBtn">Download Document (.md)</button>
+        <button class="btn secondary" id="exportBtn">Export as Markdown</button>
       </div>
     </div>
   </section>
@@ -636,86 +639,23 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // ============================================================
-// ACCOUNT/PROFILE STATE MANAGEMENT ENGINE
+// ACCOUNT STATE MANAGEMENT ENGINE
 // ============================================================
-const ACCOUNT_STORAGE_KEY = 'makespec_profiles_v2';
-const ACTIVE_PROFILE_KEY = 'makespec_active_id_v2';
+const ACCOUNT_STORAGE_KEY = 'makespec_profiles';
+const ACTIVE_PROFILE_KEY = 'makespec_active_id';
 
 let profiles = {
-  'default': { 
-    name: 'Profile Alpha', 
-    key: '',
-    inputData: { idea: '', description: '', haveparts: '', features: '', skill: 'intermediate', budget: '' },
-    stateData: { messages: [], currentSpec: null, revision: 0, historyHtml: '' }
-  }
+  'default': { name: 'Profile Alpha', key: '' }
 };
 let activeProfileId = 'default';
-
-// Capture form fields into active profile mapping context
-function captureCurrentInputState() {
-  if (!profiles[activeProfileId]) return;
-  profiles[activeProfileId].key = els.apikey.value.trim();
-  profiles[activeProfileId].inputData = {
-    idea: els.idea.value.trim(),
-    description: els.description.value.trim(),
-    haveparts: els.haveparts.value.trim(),
-    features: els.features.value.trim(),
-    skill: els.skill.value,
-    budget: els.budget.value.trim()
-  };
-}
-
-// Restore saved values from selected profile back to the DOM inputs
-function applyActiveProfileToDOM() {
-  const prof = profiles[activeProfileId];
-  if (!prof) return;
-
-  els.apikey.value = prof.key || '';
-  
-  const inputs = prof.inputData || {};
-  els.idea.value = inputs.idea || '';
-  els.description.value = inputs.description || '';
-  els.haveparts.value = inputs.haveparts || '';
-  els.features.value = inputs.features || '';
-  els.skill.value = inputs.skill || 'intermediate';
-  els.budget.value = inputs.budget || '';
-
-  const sData = prof.stateData || { messages: [], currentSpec: null, revision: 0, historyHtml: '' };
-  state.messages = sData.messages || [];
-  state.currentSpec = sData.currentSpec || null;
-  state.revision = sData.revision || 0;
-  els.revHistory.innerHTML = sData.historyHtml || '';
-
-  if (state.currentSpec) {
-    renderSpec(state.currentSpec);
-    els.stampRev.textContent = state.revision;
-    els.stampStatus.textContent = state.revision > 0 ? 'Revised' : 'Generated';
-    if (state.revision > 0) {
-      els.revBadge.textContent = `REV ${state.revision}`;
-      els.revBadge.style.display = '';
-    } else {
-      els.revBadge.style.display = 'none';
-    }
-  } else {
-    els.emptyState.style.display = '';
-    els.outputSheet.style.display = 'none';
-    els.reviseSheet.style.display = 'none';
-    els.stampRev.textContent = '0';
-    els.stampStatus.textContent = 'Draft';
-    els.revBadge.style.display = 'none';
-    if (animFrame) cancelAnimationFrame(animFrame);
-    document.getElementById('canvas-wrap').innerHTML = '';
-    document.getElementById('part-legend').innerHTML = '';
-  }
-}
 
 function loadProfiles() {
   const saved = localStorage.getItem(ACCOUNT_STORAGE_KEY);
   const activeId = localStorage.getItem(ACTIVE_PROFILE_KEY);
   if (saved) {
     try { 
-      const parsed = JSON.parse(saved);
-      if (Object.keys(parsed).length > 0) {
+      const parsed = JSON.parse(saved); 
+      if (parsed && Object.keys(parsed).length > 0) {
         profiles = parsed;
       }
     } catch(e) {}
@@ -725,19 +665,9 @@ function loadProfiles() {
   } else {
     activeProfileId = Object.keys(profiles)[0] || 'default';
   }
-  applyActiveProfileToDOM();
 }
 
 function saveProfiles() {
-  captureCurrentInputState();
-  if (profiles[activeProfileId]) {
-    profiles[activeProfileId].stateData = {
-      messages: state.messages,
-      currentSpec: state.currentSpec,
-      revision: state.revision,
-      historyHtml: els.revHistory.innerHTML
-    };
-  }
   localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(profiles));
   localStorage.setItem(ACTIVE_PROFILE_KEY, activeProfileId);
 }
@@ -752,39 +682,24 @@ function renderAccountGrid() {
     tab.addEventListener('click', () => switchProfile(id));
     grid.appendChild(tab);
   });
+  els.apikey.value = profiles[activeProfileId].key || '';
 }
 
 function switchProfile(id) {
-  if (!profiles[id] || id === activeProfileId) return;
+  if (!profiles[id]) return;
+  profiles[activeProfileId].key = els.apikey.value.trim();
   saveProfiles();
   activeProfileId = id;
-  applyActiveProfileToDOM();
-  renderAccountGrid();
   localStorage.setItem(ACTIVE_PROFILE_KEY, activeProfileId);
-}
-
-function addInputSaveListeners() {
-  const fields = [els.idea, els.description, els.haveparts, els.features, els.skill, els.budget, els.apikey];
-  fields.forEach(f => {
-    f.addEventListener('input', () => saveProfiles());
-    f.addEventListener('change', () => saveProfiles());
-  });
+  renderAccountGrid();
 }
 
 document.getElementById('addAccountBtn').addEventListener('click', () => {
-  saveProfiles();
+  profiles[activeProfileId].key = els.apikey.value.trim();
   const id = 'prof_' + Date.now();
   const index = Object.keys(profiles).length + 1;
-  
-  profiles[id] = { 
-    name: `Profile ${String.fromCharCode(64 + index) || index}`, 
-    key: els.apikey.value.trim(),
-    inputData: { idea: '', description: '', haveparts: '', features: '', skill: 'intermediate', budget: '' },
-    stateData: { messages: [], currentSpec: null, revision: 0, historyHtml: '' }
-  };
-  
+  profiles[id] = { name: `Profile ${String.fromCharCode(64 + index) || index}`, key: '' };
   activeProfileId = id;
-  applyActiveProfileToDOM();
   saveProfiles();
   renderAccountGrid();
 });
@@ -792,147 +707,17 @@ document.getElementById('addAccountBtn').addEventListener('click', () => {
 document.getElementById('deleteAccountBtn').addEventListener('click', () => {
   const keys = Object.keys(profiles);
   if (keys.length <= 1) {
-    alert('System operational constraint: At least one active project profile context must remain configured.');
+    alert('System operational constraint: At least one active profile context must remain configured.');
     return;
   }
-  if (!confirm('Are you completely sure you want to remove this project profile from local memory?')) return;
-  
   delete profiles[activeProfileId];
   activeProfileId = Object.keys(profiles)[0];
-  applyActiveProfileToDOM();
   saveProfiles();
   renderAccountGrid();
 });
 
 // ============================================================
-// MARKDOWN GENERATION ENGINE & METADATA BINDING
-// ============================================================
-function generateMarkdownContent(profObj) {
-  const s = profObj.stateData.currentSpec || {};
-  const inputs = profObj.inputData || {};
-  const md = [];
-  
-  md.push(`# ${s.project_title || inputs.idea || 'Project Spec'}`);
-  md.push(`\n## Summary\n${s.summary || 'No build configuration drafted yet.'}`);
-  if (s.assumptions) md.push(`\n**Assumptions:** ${s.assumptions}`);
-
-  md.push('\n## Input Overview');
-  md.push(`* **Idea:** ${inputs.idea || 'N/A'}`);
-  md.push(`* **Description:** ${inputs.description || 'N/A'}`);
-  md.push(`* **Skill Target:** ${inputs.skill || 'N/A'}`);
-  md.push(`* **Budget Bracket:** ${inputs.budget || 'N/A'}`);
-
-  md.push('\n## Parts List');
-  md.push('| Part | Qty | Status | Notes |');
-  md.push('| --- | --- | --- | --- |');
-  if (s.parts && s.parts.length) {
-    s.parts.forEach(p => md.push(`| ${p.name} | ${p.qty} | ${p.status} | ${p.notes} |`));
-  } else {
-    md.push('| N/A | N/A | N/A | No parts loaded |');
-  }
-
-  md.push('\n## Equipment & Tools');
-  md.push('| Tool | Purpose |');
-  md.push('| --- | --- |');
-  if (s.equipment && s.equipment.length) {
-    s.equipment.forEach(e => md.push(`| ${e.name} | ${e.purpose} |`));
-  } else {
-    md.push('| N/A | N/A |');
-  }
-
-  md.push('\n## Materials');
-  md.push('| Material | Qty | Notes |');
-  md.push('| --- | --- | --- |');
-  if (s.materials && s.materials.length) {
-    s.materials.forEach(m => md.push(`| ${m.name} | ${m.qty} | ${m.notes} |`));
-  } else {
-    md.push('| N/A | N/A | N/A |');
-  }
-
-  md.push('\n## Procedure');
-  if (s.procedure && s.procedure.length) {
-    s.procedure.forEach(p => md.push(`${p.step_number}. **${p.title}** (${p.est_time || 'N/A'})\n   ${p.description}`));
-  } else {
-    md.push('* No parameters generated yet.');
-  }
-
-  md.push('\n## Safety Notes');
-  if (s.safety_notes && s.safety_notes.length) {
-    s.safety_notes.forEach(n => md.push(`- ${n}`));
-  } else {
-    md.push('- None flagged.');
-  }
-
-  // Inject full context inside an invisible markdown trailing comment tag
-  md.push(`\n\n<!-- MAKESPEC_PROFILE_METADATA_START\n${btoa(unescape(encodeURIComponent(JSON.stringify(profObj))))}\nMAKESPEC_PROFILE_METADATA_END -->`);
-  
-  return md.join('\n');
-}
-
-// Export All/Current via Markdown wrapper file download
-document.getElementById('exportBackupBtn').addEventListener('click', () => {
-  saveProfiles();
-  const currentProfileObj = profiles[activeProfileId];
-  const fileOutputString = generateMarkdownContent(currentProfileObj);
-  
-  const blob = new Blob([fileOutputString], { type: 'text/markdown' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  const nameSafe = (currentProfileObj.name || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  a.download = `makespec_${nameSafe}_backup.md`;
-  a.click();
-});
-
-els.exportBtn.addEventListener('click', () => {
-  document.getElementById('exportBackupBtn').click();
-});
-
-// Import Markdown wrapper parsing engine
-document.getElementById('importBackupBtn').addEventListener('click', () => {
-  document.getElementById('backupFileInput').click();
-});
-
-document.getElementById('backupFileInput').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = function(evt) {
-    try {
-      const text = evt.target.result;
-      const startMarker = "<!-- MAKESPEC_PROFILE_METADATA_START";
-      const endMarker = "MAKESPEC_PROFILE_METADATA_END -->";
-      
-      if (!text.includes(startMarker) || !text.includes(endMarker)) {
-        throw new Error("This file does not contain compatible dynamic metadata configurations.");
-      }
-
-      const rawBase64 = text.split(startMarker)[1].split(endMarker)[0].trim();
-      const parsedProfile = JSON.parse(decodeURIComponent(escape(atob(rawBase64))));
-      
-      if (!parsedProfile.name || !parsedProfile.inputData) {
-        throw new Error("Data profile formatting error inside markdown element.");
-      }
-
-      if (confirm(`Do you want to append "${parsedProfile.name}" into your active workspaces profile selection map?`)) {
-        const newId = 'prof_' + Date.now();
-        profiles[newId] = parsedProfile;
-        activeProfileId = newId;
-        applyActiveProfileToDOM();
-        saveProfiles();
-        renderAccountGrid();
-        alert('Markdown configuration workspace parsed and recovered successfully!');
-      }
-    } catch(err) {
-      alert('Failed to parse Markdown metadata component: ' + err.message);
-    }
-    e.target.value = '';
-  };
-  reader.readAsText(file);
-});
-
-// ============================================================
-// SYSTEM ARCHITECTURE COMPONENT STATE
+// STATE
 // ============================================================
 const state = {
   messages: [],      
@@ -967,7 +752,15 @@ const els = {
 
 loadProfiles();
 renderAccountGrid();
-addInputSaveListeners();
+
+// Real-time listener to prevent keystroke loss on manual entry
+els.apikey.addEventListener('input', () => {
+  if (profiles[activeProfileId]) {
+    profiles[activeProfileId].key = els.apikey.value.trim();
+    saveProfiles();
+  }
+});
+
 els.stampDate.textContent = new Date().toLocaleDateString();
 
 // ============================================================
@@ -1023,22 +816,34 @@ function buildInitialPrompt(){
 // ============================================================
 async function callGemini(userMessage){
   const apiKey = els.apikey.value.trim();
-  if (!apiKey) throw new Error('Add your Gemini API key in the box above first.');
+  if (!apiKey){
+    throw new Error('Add your Gemini API key in the box above first.');
+  }
+  profiles[activeProfileId].key = apiKey;
+  saveProfiles();
 
   state.messages.push({ role: 'user', content: userMessage });
+
   const contents = state.messages.map(msg => ({
     role: msg.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: msg.content }]
   }));
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify({
       contents: contents,
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      generationConfig: { responseMimeType: "application/json" }
+      systemInstruction: {
+        parts: [{ text: SYSTEM_PROMPT }]
+      },
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
     })
   });
 
@@ -1052,11 +857,14 @@ async function callGemini(userMessage){
 
   const data = await res.json();
   const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
   state.messages.push({ role: 'assistant', content: rawText });
 
   let json;
-  try { json = JSON.parse(rawText.trim()); } catch(e){
-    throw new Error('The model returned something that was not valid JSON. Try again.');
+  try {
+    json = JSON.parse(rawText.trim());
+  } catch(e){
+    throw new Error('The model returned something that was not valid JSON. Try again — sometimes rephrasing the idea slightly helps.');
   }
   return json;
 }
@@ -1071,15 +879,19 @@ function escapeHtml(str){
 function renderSpec(spec){
   state.currentSpec = spec;
   els.emptyState.style.display = 'none';
-  els.outputSheet.style.display = '';
-  els.reviseSheet.style.display = '';
+  
+  // Make containers immediately visible to ensure layout sizes are obtainable
+  els.outputSheet.style.display = 'block';
+  els.reviseSheet.style.display = 'block';
 
   document.getElementById('output-title').textContent = spec.project_title || 'Generated Spec';
+
   els.summaryBlock.innerHTML = `
     <p style="margin:0 0 8px;">${escapeHtml(spec.summary)}</p>
     ${spec.assumptions ? `<p style="margin:0; font-size:0.85rem; color:var(--ink-faint);"><strong>Assumptions:</strong> ${escapeHtml(spec.assumptions)}</p>` : ''}
   `;
 
+  // Parts table
   const partsRows = (spec.parts || []).map(p => `
     <tr>
       <td>${escapeHtml(p.name)}</td>
@@ -1091,16 +903,21 @@ function renderSpec(spec){
     <table><thead><tr><th>Part</th><th>Qty</th><th>Status</th><th>Notes</th></tr></thead>
     <tbody>${partsRows || '<tr><td colspan="4">No parts listed.</td></tr>'}</tbody></table>`;
 
-  const eqRows = (spec.equipment || []).map(e => `<tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.purpose)}</td></tr>`).join('');
+  // Equipment table
+  const eqRows = (spec.equipment || []).map(e => `
+    <tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.purpose)}</td></tr>`).join('');
   document.getElementById('panel-equipment').innerHTML = `
     <table><thead><tr><th>Tool / Equipment</th><th>Purpose</th></tr></thead>
     <tbody>${eqRows || '<tr><td colspan="2">No equipment listed.</td></tr>'}</tbody></table>`;
 
-  const matRows = (spec.materials || []).map(m => `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.qty)}</td><td>${escapeHtml(m.notes)}</td></tr>`).join('');
+  // Materials table
+  const matRows = (spec.materials || []).map(m => `
+    <tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.qty)}</td><td>${escapeHtml(m.notes)}</td></tr>`).join('');
   document.getElementById('panel-materials').innerHTML = `
     <table><thead><tr><th>Material</th><th>Qty</th><th>Notes</th></tr></thead>
     <tbody>${matRows || '<tr><td colspan="3">No materials listed.</td></tr>'}</tbody></table>`;
 
+  // Procedure
   const stepsHtml = (spec.procedure || []).map(s => `
     <div class="procedure-step">
       <div class="step-num">${escapeHtml(s.step_number)}</div>
@@ -1111,6 +928,7 @@ function renderSpec(spec){
     </div>`).join('');
   document.getElementById('panel-procedure').innerHTML = stepsHtml || '<p>No procedure listed.</p>';
 
+  // Notes
   const safety = (spec.safety_notes || []).map(n => `<li>${escapeHtml(n)}</li>`).join('');
   const questions = (spec.open_questions || []).map(n => `<li>${escapeHtml(n)}</li>`).join('');
   document.getElementById('panel-notes').innerHTML = `
@@ -1133,26 +951,30 @@ document.getElementById('tabs').addEventListener('click', (e) => {
   document.querySelectorAll('.tabpanel').forEach(p => p.classList.remove('active'));
   tab.classList.add('active');
   document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
-  if (tab.dataset.tab === 'preview') {
-    requestAnimationFrame(() => onResize());
-  }
+  if (tab.dataset.tab === 'preview') onResize();
 });
 
 // ============================================================
-// 3D PREVIEW ENGINE (Three.js Parameter Parsing Architecture)
+// 3D PREVIEW (Three.js)
 // ============================================================
 let renderer, scene, camera, animFrame, partMeshes = [];
 
 function initThree(){
   const wrap = document.getElementById('canvas-wrap');
   wrap.innerHTML = '';
+  
   renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  
+  // Guard against hidden tab bounds computation anomalies
+  const width = wrap.clientWidth || 600;
+  const height = wrap.clientHeight || 460;
+  
+  renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   wrap.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 5000);
+  camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
   camera.position.set(300, 260, 420);
   camera.lookAt(0,0,0);
 
@@ -1173,7 +995,6 @@ function initThree(){
     camera.lookAt(0,0,0);
   }
   updateCam();
-  
   renderer.domElement.addEventListener('mousedown', e => { isDown = true; lastX = e.clientX; lastY = e.clientY; });
   window.addEventListener('mouseup', () => isDown = false);
   window.addEventListener('mousemove', e => {
@@ -1183,24 +1004,6 @@ function initThree(){
     lastX = e.clientX; lastY = e.clientY;
     updateCam();
   });
-  
-  renderer.domElement.addEventListener('touchstart', e => {
-    if (e.touches.length === 1) {
-      isDown = true;
-      lastX = e.touches[0].clientX;
-      lastY = e.touches[0].clientY;
-    }
-  }, { passive: true });
-  window.addEventListener('touchend', () => isDown = false);
-  window.addEventListener('touchmove', e => {
-    if (!isDown || e.touches.length !== 1) return;
-    theta -= (e.touches[0].clientX - lastX) * 0.006;
-    phi = Math.min(Math.max(phi - (e.touches[0].clientY - lastY) * 0.006, 0.15), Math.PI - 0.15);
-    lastX = e.touches[0].clientX;
-    lastY = e.touches[0].clientY;
-    updateCam();
-  }, { passive: true });
-
   renderer.domElement.addEventListener('wheel', e => {
     e.preventDefault();
     radius = Math.min(Math.max(radius + e.deltaY * 0.4, 100), 1400);
@@ -1231,19 +1034,23 @@ function render3D(parts){
     const dims = p.dimensions_mm || {};
     const scale = 0.3; 
     let geometry;
+    let footprint = 60;
 
     if (p.shape === 'cylinder'){
       const r = clamp((dims.radius || 20) * scale, 4, 90);
       const h = clamp((dims.h || dims.height || 40) * scale, 4, 220);
       geometry = new THREE.CylinderGeometry(r, r, h, 24);
+      footprint = r * 2;
     } else if (p.shape === 'sphere'){
       const r = clamp((dims.radius || 20) * scale, 4, 90);
       geometry = new THREE.SphereGeometry(r, 20, 16);
+      footprint = r * 2;
     } else {
       const w = clamp((dims.w || 40) * scale, 4, 220);
       const h = clamp((dims.h || 40) * scale, 4, 220);
       const d = clamp((dims.d || 40) * scale, 4, 220);
       geometry = new THREE.BoxGeometry(w, h, d);
+      footprint = Math.max(w, d);
     }
 
     const color = /^#([0-9a-f]{3}){1,2}$/i.test(p.color_hex || '') ? p.color_hex : '#8fa6b8';
@@ -1257,6 +1064,7 @@ function render3D(parts){
     mesh.geometry.computeBoundingBox();
     const yOffset = (mesh.geometry.boundingBox.max.y - mesh.geometry.boundingBox.min.y) / 2;
     mesh.position.set(x, yOffset, z);
+    mesh.userData.label = p.name;
     scene.add(mesh);
     partMeshes.push(mesh);
 
@@ -1306,7 +1114,6 @@ els.generateBtn.addEventListener('click', async () => {
     state.messages = [];
     state.revision = 0;
     const spec = await callGemini(buildInitialPrompt());
-    
     renderSpec(spec);
     els.stampRev.textContent = '0';
     els.stampStatus.textContent = 'Generated';
@@ -1314,14 +1121,13 @@ els.generateBtn.addEventListener('click', async () => {
     els.revHistory.innerHTML = '';
     els.genStatus.className = 'status ok';
     els.genStatus.textContent = 'Spec generated.';
-    
-    saveProfiles();
     els.outputSheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch(err){
     els.genStatus.className = 'status err';
     els.genStatus.textContent = err.message;
   } finally {
     setBusy(els.generateBtn, els.genStatus, false, '');
+    els.generateBtn.disabled = false;
     els.generateBtn.textContent = 'Generate spec';
   }
 });
@@ -1344,14 +1150,51 @@ els.reviseBtn.addEventListener('click', async () => {
     els.revisionInput.value = '';
     els.reviseStatus.className = 'status ok';
     els.reviseStatus.textContent = 'Revision applied.';
-    
-    saveProfiles();
   } catch(err){
     els.reviseStatus.className = 'status err';
     els.reviseStatus.textContent = err.message;
   } finally {
     setBusy(els.reviseBtn, els.reviseStatus, false, '');
   }
+});
+
+els.exportBtn.addEventListener('click', () => {
+  if (!state.currentSpec) return;
+  const s = state.currentSpec;
+  const md = [];
+  md.push(`# ${s.project_title || 'Project Spec'}`);
+  md.push(`\n## Summary\n${s.summary || ''}`);
+  if (s.assumptions) md.push(`\n**Assumptions:** ${s.assumptions}`);
+
+  md.push('\n## Parts List');
+  md.push('| Part | Qty | Status | Notes |');
+  md.push('| --- | --- | --- | --- |');
+  (s.parts || []).forEach(p => md.push(`| ${p.name} | ${p.qty} | ${p.status} | ${p.notes} |`));
+
+  md.push('\n## Equipment & Tools');
+  md.push('| Tool | Purpose |');
+  md.push('| --- | --- |');
+  (s.equipment || []).forEach(e => md.push(`| ${e.name} | ${e.purpose} |`));
+
+  md.push('\n## Materials');
+  md.push('| Material | Qty | Notes |');
+  md.push('| --- | --- | --- |');
+  (s.materials || []).forEach(m => md.push(`| ${m.name} | ${m.qty} | ${m.notes} |`));
+
+  md.push('\n## Procedure');
+  (s.procedure || []).forEach(p => md.push(`${p.step_number}. **${p.title}** (${p.est_time || 'N/A'})\n   ${p.description}`));
+
+  md.push('\n## Safety Notes');
+  (s.safety_notes || []).forEach(n => md.push(`- ${n}`));
+
+  md.push('\n## Open Questions');
+  (s.open_questions || []).forEach(q => md.push(`- ${q}`));
+
+  const blob = new Blob([md.join('\n')], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${(s.project_title || 'spec').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_spec.md`;
+  a.click();
 });
 </script>
 </body>
