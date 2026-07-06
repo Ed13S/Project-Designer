@@ -147,13 +147,8 @@
     color: var(--ink-soft);
   }
 
-  .callout-box li {
-    margin-bottom: 6px;
-  }
-
-  .callout-box li:last-child {
-    margin-bottom: 0;
-  }
+  .callout-box li { margin-bottom: 6px; }
+  .callout-box li:last-child { margin-bottom: 0; }
 
   /* ===== Sheets ===== */
   .sheet {
@@ -255,8 +250,6 @@
   .btn:disabled { background: var(--paper-deep); border-color: var(--ink-faint); color: var(--ink-faint); cursor: not-allowed; box-shadow: none; transform: none; }
   .btn.secondary { background: var(--white); color: var(--ink); }
   .btn.secondary:hover { background: var(--paper); }
-  .btn.danger { background: var(--white); color: var(--danger); border-color: var(--danger); box-shadow: 3px 3px 0 var(--danger); }
-  .btn.danger:hover { background: var(--danger); color: var(--white); box-shadow: 4px 4px 0 var(--ink); }
 
   details.keybox { margin-top: 24px; border: 1px dashed var(--ink-faint); border-radius: var(--radius); background: #F4F7FA; transition: var(--transition); }
   details.keybox[open] { background: var(--paper-deep); border-style: solid; border-color: var(--ink); }
@@ -524,9 +517,9 @@
         <div class="account-actions">
           <button type="button" class="btn-sm" id="addAccountBtn">New Project Profile</button>
           <button type="button" class="btn-sm" id="deleteAccountBtn" style="color: var(--danger); border-color: var(--danger);">Delete Current</button>
-          <button type="button" class="btn-sm" id="exportBackupBtn" style="color: var(--copper-dark); border-color: var(--copper);">Export All to File</button>
-          <button type="button" class="btn-sm" id="importBackupBtn" style="color: var(--pine); border-color: var(--pine);">Import from File</button>
-          <input type="file" id="backupFileInput" style="display: none;" accept=".json">
+          <button type="button" class="btn-sm" id="exportBackupBtn" style="color: var(--copper-dark); border-color: var(--copper);">Export Project to Markdown File</button>
+          <button type="button" class="btn-sm" id="importBackupBtn" style="color: var(--pine); border-color: var(--pine);">Import Profile from Markdown File</button>
+          <input type="file" id="backupFileInput" style="display: none;" accept=".md">
         </div>
       </div>
 
@@ -610,7 +603,7 @@
       <div class="tabpanel" id="panel-notes"></div>
 
       <div class="actions">
-        <button class="btn secondary" id="exportBtn">Export as Markdown</button>
+        <button class="btn secondary" id="exportBtn">Download Document (.md)</button>
       </div>
     </div>
   </section>
@@ -636,8 +629,8 @@
 </main>
 
 <footer>
-  <span>MAKESPEC by Eddie Singh</span>
-  <span>©Eddie Singh</span>
+  <span>MAKESPEC — runs entirely in your browser, no backend.</span>
+  <span>Your API key never leaves your device except to call generativelanguage.googleapis.com directly.</span>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -763,23 +756,18 @@ function renderAccountGrid() {
 
 function switchProfile(id) {
   if (!profiles[id] || id === activeProfileId) return;
-  saveProfiles(); // Save current before swapping
+  saveProfiles();
   activeProfileId = id;
   applyActiveProfileToDOM();
   renderAccountGrid();
   localStorage.setItem(ACTIVE_PROFILE_KEY, activeProfileId);
 }
 
-// Global real-time input capture tracker across DOM fields
 function addInputSaveListeners() {
   const fields = [els.idea, els.description, els.haveparts, els.features, els.skill, els.budget, els.apikey];
   fields.forEach(f => {
-    f.addEventListener('input', () => {
-      saveProfiles();
-    });
-    f.addEventListener('change', () => {
-      saveProfiles();
-    });
+    f.addEventListener('input', () => saveProfiles());
+    f.addEventListener('change', () => saveProfiles());
   });
 }
 
@@ -788,10 +776,9 @@ document.getElementById('addAccountBtn').addEventListener('click', () => {
   const id = 'prof_' + Date.now();
   const index = Object.keys(profiles).length + 1;
   
-  // Create clean slate config profile context
   profiles[id] = { 
     name: `Profile ${String.fromCharCode(64 + index) || index}`, 
-    key: els.apikey.value.trim(), // Carry over the API Key for speed convenience
+    key: els.apikey.value.trim(),
     inputData: { idea: '', description: '', haveparts: '', features: '', skill: 'intermediate', budget: '' },
     stateData: { messages: [], currentSpec: null, revision: 0, historyHtml: '' }
   };
@@ -818,18 +805,89 @@ document.getElementById('deleteAccountBtn').addEventListener('click', () => {
 });
 
 // ============================================================
-// EXTERNAL BACKUP IMPORT / EXPORT OPERATIONS (JSON FILES)
+// MARKDOWN GENERATION ENGINE & METADATA BINDING
 // ============================================================
+function generateMarkdownContent(profObj) {
+  const s = profObj.stateData.currentSpec || {};
+  const inputs = profObj.inputData || {};
+  const md = [];
+  
+  md.push(`# ${s.project_title || inputs.idea || 'Project Spec'}`);
+  md.push(`\n## Summary\n${s.summary || 'No build configuration drafted yet.'}`);
+  if (s.assumptions) md.push(`\n**Assumptions:** ${s.assumptions}`);
+
+  md.push('\n## Input Overview');
+  md.push(`* **Idea:** ${inputs.idea || 'N/A'}`);
+  md.push(`* **Description:** ${inputs.description || 'N/A'}`);
+  md.push(`* **Skill Target:** ${inputs.skill || 'N/A'}`);
+  md.push(`* **Budget Bracket:** ${inputs.budget || 'N/A'}`);
+
+  md.push('\n## Parts List');
+  md.push('| Part | Qty | Status | Notes |');
+  md.push('| --- | --- | --- | --- |');
+  if (s.parts && s.parts.length) {
+    s.parts.forEach(p => md.push(`| ${p.name} | ${p.qty} | ${p.status} | ${p.notes} |`));
+  } else {
+    md.push('| N/A | N/A | N/A | No parts loaded |');
+  }
+
+  md.push('\n## Equipment & Tools');
+  md.push('| Tool | Purpose |');
+  md.push('| --- | --- |');
+  if (s.equipment && s.equipment.length) {
+    s.equipment.forEach(e => md.push(`| ${e.name} | ${e.purpose} |`));
+  } else {
+    md.push('| N/A | N/A |');
+  }
+
+  md.push('\n## Materials');
+  md.push('| Material | Qty | Notes |');
+  md.push('| --- | --- | --- |');
+  if (s.materials && s.materials.length) {
+    s.materials.forEach(m => md.push(`| ${m.name} | ${m.qty} | ${m.notes} |`));
+  } else {
+    md.push('| N/A | N/A | N/A |');
+  }
+
+  md.push('\n## Procedure');
+  if (s.procedure && s.procedure.length) {
+    s.procedure.forEach(p => md.push(`${p.step_number}. **${p.title}** (${p.est_time || 'N/A'})\n   ${p.description}`));
+  } else {
+    md.push('* No parameters generated yet.');
+  }
+
+  md.push('\n## Safety Notes');
+  if (s.safety_notes && s.safety_notes.length) {
+    s.safety_notes.forEach(n => md.push(`- ${n}`));
+  } else {
+    md.push('- None flagged.');
+  }
+
+  // Inject full context inside an invisible markdown trailing comment tag
+  md.push(`\n\n<!-- MAKESPEC_PROFILE_METADATA_START\n${btoa(unescape(encodeURIComponent(JSON.stringify(profObj))))}\nMAKESPEC_PROFILE_METADATA_END -->`);
+  
+  return md.join('\n');
+}
+
+// Export All/Current via Markdown wrapper file download
 document.getElementById('exportBackupBtn').addEventListener('click', () => {
   saveProfiles();
-  const dataString = JSON.stringify(profiles, null, 2);
-  const blob = new Blob([dataString], { type: 'application/json' });
+  const currentProfileObj = profiles[activeProfileId];
+  const fileOutputString = generateMarkdownContent(currentProfileObj);
+  
+  const blob = new Blob([fileOutputString], { type: 'text/markdown' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `makespec_projects_backup_${new Date().toISOString().slice(0,10)}.json`;
+  const nameSafe = (currentProfileObj.name || 'project').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  a.download = `makespec_${nameSafe}_backup.md`;
   a.click();
 });
 
+els.exportBtn.addEventListener('click', () => {
+  document.getElementById('exportBackupBtn').click();
+});
+
+// Import Markdown wrapper parsing engine
 document.getElementById('importBackupBtn').addEventListener('click', () => {
   document.getElementById('backupFileInput').click();
 });
@@ -841,30 +899,33 @@ document.getElementById('backupFileInput').addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = function(evt) {
     try {
-      const importedData = JSON.parse(evt.target.result);
+      const text = evt.target.result;
+      const startMarker = "<!-- MAKESPEC_PROFILE_METADATA_START";
+      const endMarker = "MAKESPEC_PROFILE_METADATA_END -->";
       
-      // Basic structural safety checking before overwriting state
-      if (typeof importedData !== 'object' || importedData === null) {
-        throw new Error('Invalid formatting structure.');
-      }
-      
-      const keys = Object.keys(importedData);
-      if (keys.length === 0 || !importedData[keys[0]].name) {
-        throw new Error('Data layout mismatch detected.');
+      if (!text.includes(startMarker) || !text.includes(endMarker)) {
+        throw new Error("This file does not contain compatible dynamic metadata configurations.");
       }
 
-      if (confirm('Importing file data will totally replace your browser\'s current project profiles list. Continue?')) {
-        profiles = importedData;
-        activeProfileId = keys[0];
+      const rawBase64 = text.split(startMarker)[1].split(endMarker)[0].trim();
+      const parsedProfile = JSON.parse(decodeURIComponent(escape(atob(rawBase64))));
+      
+      if (!parsedProfile.name || !parsedProfile.inputData) {
+        throw new Error("Data profile formatting error inside markdown element.");
+      }
+
+      if (confirm(`Do you want to append "${parsedProfile.name}" into your active workspaces profile selection map?`)) {
+        const newId = 'prof_' + Date.now();
+        profiles[newId] = parsedProfile;
+        activeProfileId = newId;
         applyActiveProfileToDOM();
         saveProfiles();
         renderAccountGrid();
-        alert('All project profiles imported successfully from local file asset!');
+        alert('Markdown configuration workspace parsed and recovered successfully!');
       }
     } catch(err) {
-      alert('Failed to parse profile backup file: ' + err.message);
+      alert('Failed to parse Markdown metadata component: ' + err.message);
     }
-    // Reset file element value to allow re-uploads
     e.target.value = '';
   };
   reader.readAsText(file);
@@ -907,7 +968,6 @@ const els = {
 loadProfiles();
 renderAccountGrid();
 addInputSaveListeners();
-
 els.stampDate.textContent = new Date().toLocaleDateString();
 
 // ============================================================
@@ -963,32 +1023,22 @@ function buildInitialPrompt(){
 // ============================================================
 async function callGemini(userMessage){
   const apiKey = els.apikey.value.trim();
-  if (!apiKey){
-    throw new Error('Add your Gemini API key in the box above first.');
-  }
+  if (!apiKey) throw new Error('Add your Gemini API key in the box above first.');
 
   state.messages.push({ role: 'user', content: userMessage });
-
   const contents = state.messages.map(msg => ({
     role: msg.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: msg.content }]
   }));
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: contents,
-      systemInstruction: {
-        parts: [{ text: SYSTEM_PROMPT }]
-      },
-      generationConfig: {
-        responseMimeType: "application/json"
-      }
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      generationConfig: { responseMimeType: "application/json" }
     })
   });
 
@@ -1002,14 +1052,11 @@ async function callGemini(userMessage){
 
   const data = await res.json();
   const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
   state.messages.push({ role: 'assistant', content: rawText });
 
   let json;
-  try {
-    json = JSON.parse(rawText.trim());
-  } catch(e){
-    throw new Error('The model returned something that was not valid JSON. Try again — sometimes rephrasing the idea slightly helps.');
+  try { json = JSON.parse(rawText.trim()); } catch(e){
+    throw new Error('The model returned something that was not valid JSON. Try again.');
   }
   return json;
 }
@@ -1028,13 +1075,11 @@ function renderSpec(spec){
   els.reviseSheet.style.display = '';
 
   document.getElementById('output-title').textContent = spec.project_title || 'Generated Spec';
-
   els.summaryBlock.innerHTML = `
     <p style="margin:0 0 8px;">${escapeHtml(spec.summary)}</p>
     ${spec.assumptions ? `<p style="margin:0; font-size:0.85rem; color:var(--ink-faint);"><strong>Assumptions:</strong> ${escapeHtml(spec.assumptions)}</p>` : ''}
   `;
 
-  // Parts table
   const partsRows = (spec.parts || []).map(p => `
     <tr>
       <td>${escapeHtml(p.name)}</td>
@@ -1046,21 +1091,16 @@ function renderSpec(spec){
     <table><thead><tr><th>Part</th><th>Qty</th><th>Status</th><th>Notes</th></tr></thead>
     <tbody>${partsRows || '<tr><td colspan="4">No parts listed.</td></tr>'}</tbody></table>`;
 
-  // Equipment table
-  const eqRows = (spec.equipment || []).map(e => `
-    <tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.purpose)}</td></tr>`).join('');
+  const eqRows = (spec.equipment || []).map(e => `<tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.purpose)}</td></tr>`).join('');
   document.getElementById('panel-equipment').innerHTML = `
     <table><thead><tr><th>Tool / Equipment</th><th>Purpose</th></tr></thead>
     <tbody>${eqRows || '<tr><td colspan="2">No equipment listed.</td></tr>'}</tbody></table>`;
 
-  // Materials table
-  const matRows = (spec.materials || []).map(m => `
-    <tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.qty)}</td><td>${escapeHtml(m.notes)}</td></tr>`).join('');
+  const matRows = (spec.materials || []).map(m => `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.qty)}</td><td>${escapeHtml(m.notes)}</td></tr>`).join('');
   document.getElementById('panel-materials').innerHTML = `
     <table><thead><tr><th>Material</th><th>Qty</th><th>Notes</th></tr></thead>
     <tbody>${matRows || '<tr><td colspan="3">No materials listed.</td></tr>'}</tbody></table>`;
 
-  // Procedure
   const stepsHtml = (spec.procedure || []).map(s => `
     <div class="procedure-step">
       <div class="step-num">${escapeHtml(s.step_number)}</div>
@@ -1071,7 +1111,6 @@ function renderSpec(spec){
     </div>`).join('');
   document.getElementById('panel-procedure').innerHTML = stepsHtml || '<p>No procedure listed.</p>';
 
-  // Notes
   const safety = (spec.safety_notes || []).map(n => `<li>${escapeHtml(n)}</li>`).join('');
   const questions = (spec.open_questions || []).map(n => `<li>${escapeHtml(n)}</li>`).join('');
   document.getElementById('panel-notes').innerHTML = `
@@ -1100,7 +1139,7 @@ document.getElementById('tabs').addEventListener('click', (e) => {
 });
 
 // ============================================================
-// 3D PREVIEW (Three.js)
+// 3D PREVIEW ENGINE (Three.js Parameter Parsing Architecture)
 // ============================================================
 let renderer, scene, camera, animFrame, partMeshes = [];
 
@@ -1135,7 +1174,6 @@ function initThree(){
   }
   updateCam();
   
-  // Mouse listeners
   renderer.domElement.addEventListener('mousedown', e => { isDown = true; lastX = e.clientX; lastY = e.clientY; });
   window.addEventListener('mouseup', () => isDown = false);
   window.addEventListener('mousemove', e => {
@@ -1146,7 +1184,6 @@ function initThree(){
     updateCam();
   });
   
-  // Touchscreen interactive support listeners
   renderer.domElement.addEventListener('touchstart', e => {
     if (e.touches.length === 1) {
       isDown = true;
@@ -1194,23 +1231,19 @@ function render3D(parts){
     const dims = p.dimensions_mm || {};
     const scale = 0.3; 
     let geometry;
-    let footprint = 60;
 
     if (p.shape === 'cylinder'){
       const r = clamp((dims.radius || 20) * scale, 4, 90);
       const h = clamp((dims.h || dims.height || 40) * scale, 4, 220);
       geometry = new THREE.CylinderGeometry(r, r, h, 24);
-      footprint = r * 2;
     } else if (p.shape === 'sphere'){
       const r = clamp((dims.radius || 20) * scale, 4, 90);
       geometry = new THREE.SphereGeometry(r, 20, 16);
-      footprint = r * 2;
     } else {
       const w = clamp((dims.w || 40) * scale, 4, 220);
       const h = clamp((dims.h || 40) * scale, 4, 220);
       const d = clamp((dims.d || 40) * scale, 4, 220);
       geometry = new THREE.BoxGeometry(w, h, d);
-      footprint = Math.max(w, d);
     }
 
     const color = /^#([0-9a-f]{3}){1,2}$/i.test(p.color_hex || '') ? p.color_hex : '#8fa6b8';
@@ -1224,7 +1257,6 @@ function render3D(parts){
     mesh.geometry.computeBoundingBox();
     const yOffset = (mesh.geometry.boundingBox.max.y - mesh.geometry.boundingBox.min.y) / 2;
     mesh.position.set(x, yOffset, z);
-    mesh.userData.label = p.name;
     scene.add(mesh);
     partMeshes.push(mesh);
 
@@ -1283,7 +1315,7 @@ els.generateBtn.addEventListener('click', async () => {
     els.genStatus.className = 'status ok';
     els.genStatus.textContent = 'Spec generated.';
     
-    saveProfiles(); // Save the newly generated spec to the profile state
+    saveProfiles();
     els.outputSheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch(err){
     els.genStatus.className = 'status err';
@@ -1313,52 +1345,13 @@ els.reviseBtn.addEventListener('click', async () => {
     els.reviseStatus.className = 'status ok';
     els.reviseStatus.textContent = 'Revision applied.';
     
-    saveProfiles(); // Sync tracking revisions immediately to client storage parameters
+    saveProfiles();
   } catch(err){
     els.reviseStatus.className = 'status err';
     els.reviseStatus.textContent = err.message;
   } finally {
     setBusy(els.reviseBtn, els.reviseStatus, false, '');
   }
-});
-
-els.exportBtn.addEventListener('click', () => {
-  if (!state.currentSpec) return;
-  const s = state.currentSpec;
-  const md = [];
-  md.push(`# ${s.project_title || 'Project Spec'}`);
-  md.push(`\n## Summary\n${s.summary || ''}`);
-  if (s.assumptions) md.push(`\n**Assumptions:** ${s.assumptions}`);
-
-  md.push('\n## Parts List');
-  md.push('| Part | Qty | Status | Notes |');
-  md.push('| --- | --- | --- | --- |');
-  (s.parts || []).forEach(p => md.push(`| ${p.name} | ${p.qty} | ${p.status} | ${p.notes} |`));
-
-  md.push('\n## Equipment & Tools');
-  md.push('| Tool | Purpose |');
-  md.push('| --- | --- |');
-  (s.equipment || []).forEach(e => md.push(`| ${e.name} | ${e.purpose} |`));
-
-  md.push('\n## Materials');
-  md.push('| Material | Qty | Notes |');
-  md.push('| --- | --- | --- |');
-  (s.materials || []).forEach(m => md.push(`| ${m.name} | ${m.qty} | ${m.notes} |`));
-
-  md.push('\n## Procedure');
-  (s.procedure || []).forEach(p => md.push(`${p.step_number}. **${p.title}** (${p.est_time || 'N/A'})\n   ${p.description}`));
-
-  md.push('\n## Safety Notes');
-  (s.safety_notes || []).forEach(n => md.push(`- ${n}`));
-
-  md.push('\n## Open Questions');
-  (s.open_questions || []).forEach(q => md.push(`- ${q}`));
-
-  const blob = new Blob([md.join('\n')], { type: 'text/markdown' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${(s.project_title || 'spec').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_spec.md`;
-  a.click();
 });
 </script>
 </body>
