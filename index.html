@@ -304,6 +304,7 @@
     display: flex;
     gap: 8px;
     margin-top: 12px;
+    flex-wrap: wrap;
   }
   .btn-sm {
     font-family: var(--mono);
@@ -518,11 +519,14 @@
     <div class="sheet-body">
       
       <div class="account-selector-wrap">
-        <label>Active Account Profile</label>
+        <label>Active Project Profile</label>
         <div class="account-grid" id="accountGrid"></div>
         <div class="account-actions">
-          <button type="button" class="btn-sm" id="addAccountBtn">New Account</button>
+          <button type="button" class="btn-sm" id="addAccountBtn">New Project Profile</button>
           <button type="button" class="btn-sm" id="deleteAccountBtn" style="color: var(--danger); border-color: var(--danger);">Delete Current</button>
+          <button type="button" class="btn-sm" id="exportBackupBtn" style="color: var(--copper-dark); border-color: var(--copper);">Export All to File</button>
+          <button type="button" class="btn-sm" id="importBackupBtn" style="color: var(--pine); border-color: var(--pine);">Import from File</button>
+          <input type="file" id="backupFileInput" style="display: none;" accept=".json">
         </div>
       </div>
 
@@ -639,30 +643,108 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // ============================================================
-// ACCOUNT STATE MANAGEMENT ENGINE
+// ACCOUNT/PROFILE STATE MANAGEMENT ENGINE
 // ============================================================
-const ACCOUNT_STORAGE_KEY = 'makespec_profiles';
-const ACTIVE_PROFILE_KEY = 'makespec_active_id';
+const ACCOUNT_STORAGE_KEY = 'makespec_profiles_v2';
+const ACTIVE_PROFILE_KEY = 'makespec_active_id_v2';
 
 let profiles = {
-  'default': { name: 'Profile Alpha', key: '' }
+  'default': { 
+    name: 'Profile Alpha', 
+    key: '',
+    inputData: { idea: '', description: '', haveparts: '', features: '', skill: 'intermediate', budget: '' },
+    stateData: { messages: [], currentSpec: null, revision: 0, historyHtml: '' }
+  }
 };
 let activeProfileId = 'default';
+
+// Capture form fields into active profile mapping context
+function captureCurrentInputState() {
+  if (!profiles[activeProfileId]) return;
+  profiles[activeProfileId].key = els.apikey.value.trim();
+  profiles[activeProfileId].inputData = {
+    idea: els.idea.value.trim(),
+    description: els.description.value.trim(),
+    haveparts: els.haveparts.value.trim(),
+    features: els.features.value.trim(),
+    skill: els.skill.value,
+    budget: els.budget.value.trim()
+  };
+}
+
+// Restore saved values from selected profile back to the DOM inputs
+function applyActiveProfileToDOM() {
+  const prof = profiles[activeProfileId];
+  if (!prof) return;
+
+  els.apikey.value = prof.key || '';
+  
+  const inputs = prof.inputData || {};
+  els.idea.value = inputs.idea || '';
+  els.description.value = inputs.description || '';
+  els.haveparts.value = inputs.haveparts || '';
+  els.features.value = inputs.features || '';
+  els.skill.value = inputs.skill || 'intermediate';
+  els.budget.value = inputs.budget || '';
+
+  const sData = prof.stateData || { messages: [], currentSpec: null, revision: 0, historyHtml: '' };
+  state.messages = sData.messages || [];
+  state.currentSpec = sData.currentSpec || null;
+  state.revision = sData.revision || 0;
+  els.revHistory.innerHTML = sData.historyHtml || '';
+
+  if (state.currentSpec) {
+    renderSpec(state.currentSpec);
+    els.stampRev.textContent = state.revision;
+    els.stampStatus.textContent = state.revision > 0 ? 'Revised' : 'Generated';
+    if (state.revision > 0) {
+      els.revBadge.textContent = `REV ${state.revision}`;
+      els.revBadge.style.display = '';
+    } else {
+      els.revBadge.style.display = 'none';
+    }
+  } else {
+    els.emptyState.style.display = '';
+    els.outputSheet.style.display = 'none';
+    els.reviseSheet.style.display = 'none';
+    els.stampRev.textContent = '0';
+    els.stampStatus.textContent = 'Draft';
+    els.revBadge.style.display = 'none';
+    if (animFrame) cancelAnimationFrame(animFrame);
+    document.getElementById('canvas-wrap').innerHTML = '';
+    document.getElementById('part-legend').innerHTML = '';
+  }
+}
 
 function loadProfiles() {
   const saved = localStorage.getItem(ACCOUNT_STORAGE_KEY);
   const activeId = localStorage.getItem(ACTIVE_PROFILE_KEY);
   if (saved) {
-    try { profiles = JSON.parse(saved); } catch(e) {}
+    try { 
+      const parsed = JSON.parse(saved);
+      if (Object.keys(parsed).length > 0) {
+        profiles = parsed;
+      }
+    } catch(e) {}
   }
   if (activeId && profiles[activeId]) {
     activeProfileId = activeId;
   } else {
     activeProfileId = Object.keys(profiles)[0] || 'default';
   }
+  applyActiveProfileToDOM();
 }
 
 function saveProfiles() {
+  captureCurrentInputState();
+  if (profiles[activeProfileId]) {
+    profiles[activeProfileId].stateData = {
+      messages: state.messages,
+      currentSpec: state.currentSpec,
+      revision: state.revision,
+      historyHtml: els.revHistory.innerHTML
+    };
+  }
   localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(profiles));
   localStorage.setItem(ACTIVE_PROFILE_KEY, activeProfileId);
 }
@@ -677,24 +759,45 @@ function renderAccountGrid() {
     tab.addEventListener('click', () => switchProfile(id));
     grid.appendChild(tab);
   });
-  els.apikey.value = profiles[activeProfileId].key || '';
 }
 
 function switchProfile(id) {
-  if (!profiles[id]) return;
-  profiles[activeProfileId].key = els.apikey.value.trim();
-  saveProfiles();
+  if (!profiles[id] || id === activeProfileId) return;
+  saveProfiles(); // Save current before swapping
   activeProfileId = id;
-  localStorage.setItem(ACTIVE_PROFILE_KEY, activeProfileId);
+  applyActiveProfileToDOM();
   renderAccountGrid();
+  localStorage.setItem(ACTIVE_PROFILE_KEY, activeProfileId);
+}
+
+// Global real-time input capture tracker across DOM fields
+function addInputSaveListeners() {
+  const fields = [els.idea, els.description, els.haveparts, els.features, els.skill, els.budget, els.apikey];
+  fields.forEach(f => {
+    f.addEventListener('input', () => {
+      saveProfiles();
+    });
+    f.addEventListener('change', () => {
+      saveProfiles();
+    });
+  });
 }
 
 document.getElementById('addAccountBtn').addEventListener('click', () => {
-  profiles[activeProfileId].key = els.apikey.value.trim();
+  saveProfiles();
   const id = 'prof_' + Date.now();
   const index = Object.keys(profiles).length + 1;
-  profiles[id] = { name: `Profile ${String.fromCharCode(64 + index) || index}`, key: '' };
+  
+  // Create clean slate config profile context
+  profiles[id] = { 
+    name: `Profile ${String.fromCharCode(64 + index) || index}`, 
+    key: els.apikey.value.trim(), // Carry over the API Key for speed convenience
+    inputData: { idea: '', description: '', haveparts: '', features: '', skill: 'intermediate', budget: '' },
+    stateData: { messages: [], currentSpec: null, revision: 0, historyHtml: '' }
+  };
+  
   activeProfileId = id;
+  applyActiveProfileToDOM();
   saveProfiles();
   renderAccountGrid();
 });
@@ -702,17 +805,73 @@ document.getElementById('addAccountBtn').addEventListener('click', () => {
 document.getElementById('deleteAccountBtn').addEventListener('click', () => {
   const keys = Object.keys(profiles);
   if (keys.length <= 1) {
-    alert('System operational constraint: At least one active profile context must remain configured.');
+    alert('System operational constraint: At least one active project profile context must remain configured.');
     return;
   }
+  if (!confirm('Are you completely sure you want to remove this project profile from local memory?')) return;
+  
   delete profiles[activeProfileId];
   activeProfileId = Object.keys(profiles)[0];
+  applyActiveProfileToDOM();
   saveProfiles();
   renderAccountGrid();
 });
 
 // ============================================================
-// STATE
+// EXTERNAL BACKUP IMPORT / EXPORT OPERATIONS (JSON FILES)
+// ============================================================
+document.getElementById('exportBackupBtn').addEventListener('click', () => {
+  saveProfiles();
+  const dataString = JSON.stringify(profiles, null, 2);
+  const blob = new Blob([dataString], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `makespec_projects_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+});
+
+document.getElementById('importBackupBtn').addEventListener('click', () => {
+  document.getElementById('backupFileInput').click();
+});
+
+document.getElementById('backupFileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const importedData = JSON.parse(evt.target.result);
+      
+      // Basic structural safety checking before overwriting state
+      if (typeof importedData !== 'object' || importedData === null) {
+        throw new Error('Invalid formatting structure.');
+      }
+      
+      const keys = Object.keys(importedData);
+      if (keys.length === 0 || !importedData[keys[0]].name) {
+        throw new Error('Data layout mismatch detected.');
+      }
+
+      if (confirm('Importing file data will totally replace your browser\'s current project profiles list. Continue?')) {
+        profiles = importedData;
+        activeProfileId = keys[0];
+        applyActiveProfileToDOM();
+        saveProfiles();
+        renderAccountGrid();
+        alert('All project profiles imported successfully from local file asset!');
+      }
+    } catch(err) {
+      alert('Failed to parse profile backup file: ' + err.message);
+    }
+    // Reset file element value to allow re-uploads
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+// ============================================================
+// SYSTEM ARCHITECTURE COMPONENT STATE
 // ============================================================
 const state = {
   messages: [],      
@@ -747,14 +906,7 @@ const els = {
 
 loadProfiles();
 renderAccountGrid();
-
-// Real-time listener saving API credentials context safely on input changes
-els.apikey.addEventListener('input', () => {
-  if (profiles[activeProfileId]) {
-    profiles[activeProfileId].key = els.apikey.value.trim();
-    saveProfiles();
-  }
-});
+addInputSaveListeners();
 
 els.stampDate.textContent = new Date().toLocaleDateString();
 
@@ -814,8 +966,6 @@ async function callGemini(userMessage){
   if (!apiKey){
     throw new Error('Add your Gemini API key in the box above first.');
   }
-  profiles[activeProfileId].key = apiKey;
-  saveProfiles();
 
   state.messages.push({ role: 'user', content: userMessage });
 
@@ -945,7 +1095,6 @@ document.getElementById('tabs').addEventListener('click', (e) => {
   tab.classList.add('active');
   document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
   if (tab.dataset.tab === 'preview') {
-    // Wrap canvas reflow inside animation frame to avoid zero-dimension sizing glitches
     requestAnimationFrame(() => onResize());
   }
 });
@@ -1125,6 +1274,7 @@ els.generateBtn.addEventListener('click', async () => {
     state.messages = [];
     state.revision = 0;
     const spec = await callGemini(buildInitialPrompt());
+    
     renderSpec(spec);
     els.stampRev.textContent = '0';
     els.stampStatus.textContent = 'Generated';
@@ -1132,6 +1282,8 @@ els.generateBtn.addEventListener('click', async () => {
     els.revHistory.innerHTML = '';
     els.genStatus.className = 'status ok';
     els.genStatus.textContent = 'Spec generated.';
+    
+    saveProfiles(); // Save the newly generated spec to the profile state
     els.outputSheet.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch(err){
     els.genStatus.className = 'status err';
@@ -1160,6 +1312,8 @@ els.reviseBtn.addEventListener('click', async () => {
     els.revisionInput.value = '';
     els.reviseStatus.className = 'status ok';
     els.reviseStatus.textContent = 'Revision applied.';
+    
+    saveProfiles(); // Sync tracking revisions immediately to client storage parameters
   } catch(err){
     els.reviseStatus.className = 'status err';
     els.reviseStatus.textContent = err.message;
